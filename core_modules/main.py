@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from PIL import Image, ImageTk
 
 CURR_ABS_PATH = os.path.abspath("")
 
@@ -69,11 +70,45 @@ def prompt_path():
 
 
 def gui():
+    counter = 0
+
     root = tk.Tk()
     root.attributes("-fullscreen", True)
     root.title("Vim Photo Manager")
-    label = tk.Label(root, text="This is the title")
-    label.pack()
+    title_l = tk.Label(root, text="This is the title")
+    file_l = tk.Label(root, text=counter)
+    mapped_key_press_label = tk.Label(root, text="Press any key")
+    command_l = tk.Label(root, text="press_label any key")
+    title_l.pack()
+    file_l.pack()
+    mapped_key_press_label.pack()
+
+    def on_escape(event):
+        root.quit()
+
+    def on_left(event):
+        nonlocal counter
+        counter -= 1
+        mapped_key_press_label.config(text=event.char)
+        file_l.config(text=counter)
+        command_l.config(text="Prev photo")
+
+    def on_right(event):
+        nonlocal counter
+        counter += 1
+        mapped_key_press_label.config(text=event.char)
+        file_l.config(text=counter)
+        command_l.config(text="Next photo")
+
+    def any_key(event):
+        mapped_key_press_label.config(text=event.char)
+        command_l.config(text=event.keysym)
+
+    root.bind("<Key>", any_key)
+    root.bind("<Escape>", on_escape)
+    root.bind("q", on_escape)
+    root.bind("h", on_left)
+    root.bind("l", on_right)
     root.mainloop()
 
 
