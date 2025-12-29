@@ -1,4 +1,5 @@
 import os
+import tkinter as tk
 
 CURR_ABS_PATH = os.path.abspath("")
 
@@ -67,10 +68,16 @@ def prompt_path():
     return path if path else ""
 
 
-if __name__ == "__main__":
-    print("\n\n----- Start of the program -----\n\n")
+def gui():
+    root = tk.Tk()
+    root.attributes("-fullscreen", True)
+    root.title("Vim Photo Manager")
+    label = tk.Label(root, text="This is the title")
+    label.pack()
+    root.mainloop()
 
-    command_quit = "!q"
+
+def cli():
     while True:
         print("\n\n")
         print(f"Current absolute path:\t{CURR_ABS_PATH}")
@@ -98,5 +105,34 @@ if __name__ == "__main__":
         for item in list.result:
             item.display_details()
             print("\n")
+
+
+if __name__ == "__main__":
+    print("\n\n----- Start of the program -----\n\n")
+
+    command_quit = "!q"
+
+    # choosing an interface
+    i_gui = "1"
+    i_cli = "2"
+    while True:
+        print("\n\n")
+        print(f"To quit, enter: '{command_quit}'")
+        print("Pick an interface:")
+        print(f"{i_gui}. GUI (With windows)")
+        print(f"{i_cli}. CLI (In terminal)")
+
+        choice = input()
+
+        if choice == command_quit:
+            break
+        elif choice == i_gui:
+            gui()
+        elif choice == i_cli:
+            cli()
+        else:
+            print("Invalid choice")
+            continue
+        break
 
     print("\n\n----- End of the program -----")
