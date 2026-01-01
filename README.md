@@ -8,15 +8,29 @@ photographer"
 ### Using dockers containers
 
 - Build an image using [`dockerfile`](./dockerfile)
+- Only the CLI version is usable
 
 ### Using your base system
 
 #### Requirements
 
-- Python
+- Python version `3.12`
+- Python pacakges:
+  - numpy
+  - pillow
+  - python3-tkinter
 
 #### Steps
 
 - Clone or download this repository:
 - Run the software:
   - Run the bash script [`start.sh`](./start.sh) or run the command `python -m core_modules.main`
+
+---
+
+## Future planned features
+
+- CLI:
+  - Working only from the terminal
+
+- Displaying RAW files

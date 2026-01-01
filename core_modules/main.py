@@ -5,6 +5,11 @@ from PIL import Image, ImageTk
 
 CURR_ABS_PATH = os.path.abspath("")
 
+DEFAULT_COLOR_NEUTRAL = "gray"
+DEFAULT_COLOR_DELETED = "red"
+
+IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
+
 
 class FileSystemItem:
     def __init__(self, abs_path: str):
@@ -25,6 +30,8 @@ class FileSystemItem:
             self.name = os.path.basename(abs_path)
             self.extension = None
 
+        self.extension = self.extension.lower() if self.extension else self.extension
+
     def display_details(self):
         print(f"abs_path:\t{self.abs_path}")
         print(f"is_file:\t{self.is_file}")
@@ -43,10 +50,25 @@ class FileSystemItem:
         if not self.extension:
             return False
 
-        if self.extension == "jpg" or self.extension == "png":
+        if self.extension in IMAGE_EXTENSIONS:
             return True
 
         return False
+
+
+class FSItemGUIHandler:
+    def __init__(self, image):
+        self.image = image
+        self.is_highlighted: bool = False
+
+    def toggleHighlight(self):
+        self.is_highlighted = not self.is_highlighted
+
+    def update_highlight(self, image_label):
+        if self.is_highlighted:
+            image_label.config(background=DEFAULT_COLOR_DELETED)
+        else:
+            image_label.config(background=DEFAULT_COLOR_NEUTRAL)
 
 
 class Result:
@@ -93,14 +115,14 @@ def prompt_path():
 
 
 def gui():
-    path = os.path.abspath("gitignore")
+    path = os.path.abspath("gitignore/test")
     list = list_of_fs_items_at(path, images_only=True)
     if not list.is_successful:
         print(list.formatted_err_msg())
         return
 
     fs_items_size = len(list.result)
-    fs_item_counter = -1
+    fs_item_curr_index = -1
 
     # main window
     root = tk.Tk()
@@ -112,6 +134,7 @@ def gui():
     file_l = tk.Label(root, text=f"Number of images = {fs_items_size}")
     mapped_key_press_l = tk.Label(root, text="Mapped key")
     command_l = tk.Label(root, text="Command")
+    system_log_l = tk.Label(root, text="System Logs")
     image_l = tk.Label(root, text="Picture place")
 
     # packing
@@ -119,10 +142,18 @@ def gui():
     file_l.pack()
     command_l.pack()
     mapped_key_press_l.pack()
+    system_log_l.pack()
     image_l.pack(expand=True, fill=tk.BOTH)
 
     if fs_items_size == 0:
         file_l.config(text="No images here")
+
+    image_gui_handlers = []
+
+    def update_system_log_l(log: str):
+        nonlocal system_log_l
+        system_log_l.config(text=log)
+        print(log)
 
     def event_char(char):
         return f"'{char}'"
@@ -131,51 +162,86 @@ def gui():
         root.quit()
 
     def on_left(event):
+        update_system_log_l("displaying left image")
         mapped_key_press_l.config(text=event_char(event.char))
 
-        nonlocal fs_item_counter
+        nonlocal fs_item_curr_index
 
         if fs_items_size == 0:
             command_l.config(text="No image")
             return
 
-        fs_item_counter = np.clip(fs_item_counter - 1, 0, fs_items_size - 1)
-        file_l.config(text=list.result[fs_item_counter].full_name())
+        fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
+        file_l.config(text=list.result[fs_item_curr_index].full_name())
         command_l.config(text="Prev photo")
-        display_image_from_path(list.result[fs_item_counter].abs_path)
+        display_image_from_path(fs_item_curr_index)
 
     def on_right(event):
+        update_system_log_l("displaying right image")
         mapped_key_press_l.config(text=event_char(event.char))
-        nonlocal fs_item_counter
+        nonlocal fs_item_curr_index
 
         if fs_items_size == 0:
             command_l.config(text="No image")
             return
 
-        fs_item_counter = np.clip(fs_item_counter + 1, 0, fs_items_size - 1)
-        file_l.config(text=list.result[fs_item_counter].full_name())
+        fs_item_curr_index = np.clip(fs_item_curr_index + 1, 0, fs_items_size - 1)
+        file_l.config(text=list.result[fs_item_curr_index].full_name())
         command_l.config(text="Next photo")
-        display_image_from_path(list.result[fs_item_counter].abs_path)
+        display_image_from_path(fs_item_curr_index)
+
+    def on_deletion(event):
+        update_system_log_l("deleting")
+        mapped_key_press_l.config(text=event_char(event.char))
+        command_l.config(text="Deleting photo")
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[fs_item_curr_index]
+        h.toggleHighlight()
+        h.update_highlight(image_l)
 
     def any_key(event):
         mapped_key_press_l.config(text=event_char(event.char))
         command_l.config(text=event.keysym)
 
-    def display_image_from_path(path: str):
-        img = Image.open(path)
-        img.thumbnail(
-            (root.winfo_screenwidth(), root.winfo_screenheight()),
-            Image.Resampling.LANCZOS,
-        )
+    def display_image_from_path(index: int):
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[index]
+        img = h.image
         photo = ImageTk.PhotoImage(img)
         image_l.config(image=photo)
         image_l.image = photo
+        h.update_highlight(image_l)
 
-    root.bind("<Key>", any_key)
+    def init():
+        update_system_log_l("Pre-creating FSItemGUIHandler objects")
+        count_cache = 1
+        for image in list.result:
+            update_system_log_l(
+                f"Caching ({count_cache}/{len(list.result)}): {image.abs_path}"
+            )
+            img = Image.open(image.abs_path)
+            img.thumbnail(
+                (root.winfo_screenwidth(), root.winfo_screenheight()),
+                Image.Resampling.LANCZOS,
+            )
+            image_gui_handlers.append(FSItemGUIHandler(img))
+            count_cache += 1
+
+    # escape keys
     root.bind("<Escape>", on_escape)
     root.bind("q", on_escape)
+
+    # navigation
     root.bind("h", on_left)
     root.bind("l", on_right)
+
+    # deletion
+    root.bind("x", on_deletion)
+
+    # any keys
+    root.bind("<Key>", any_key)
+
+    root.after(10, init)
     root.mainloop()
 
 
@@ -212,7 +278,7 @@ def cli():
 if __name__ == "__main__":
     print("\n\n----- Start of the program -----\n\n")
 
-    command_quit = "!q"
+    command_quit = "q!"
 
     # choosing an interface
     i_gui = "1"
