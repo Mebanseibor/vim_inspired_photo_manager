@@ -1,9 +1,11 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim
+
+RUN apt update && \
+  apt install -y python3-tk && \
+  rm -rf /var/lib/apt/lists/* && \
+  pip install --no-cache-dir numpy pillow customtkinter
 
 COPY . /app
 WORKDIR /app
-
-RUN pip install numpy pillow && \
-  apk add python3-tkinter
 
 CMD ["python", "-m", "core_modules.main"]

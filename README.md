@@ -15,10 +15,10 @@ photographer"
 #### Requirements
 
 - Python version `3.12`
-- Python pacakges:
+- Python packages:
   - numpy
   - pillow
-  - python3-tkinter
+  - customtkinter
 
 #### Steps
 

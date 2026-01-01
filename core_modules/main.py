@@ -1,7 +1,7 @@
 import os
 import numpy as np
-import tkinter as tk
-from PIL import Image, ImageTk
+import customtkinter as ctk
+from PIL import Image
 
 CURR_ABS_PATH = os.path.abspath("")
 
@@ -66,9 +66,9 @@ class FSItemGUIHandler:
 
     def update_highlight(self, image_label):
         if self.is_highlighted:
-            image_label.config(background=DEFAULT_COLOR_DELETED)
+            image_label.configure(fg_color=DEFAULT_COLOR_DELETED)
         else:
-            image_label.config(background=DEFAULT_COLOR_NEUTRAL)
+            image_label.configure(fg_color=DEFAULT_COLOR_NEUTRAL)
 
 
 class Result:
@@ -125,17 +125,17 @@ def gui():
     fs_item_curr_index = -1
 
     # main window
-    root = tk.Tk()
+    root = ctk.CTk()
     root.attributes("-fullscreen", True)
     root.title("Vim Photo Manager")
 
     # components
-    currect_abs_path_l = tk.Label(root, text=path)
-    file_l = tk.Label(root, text=f"Number of images = {fs_items_size}")
-    mapped_key_press_l = tk.Label(root, text="Mapped key")
-    command_l = tk.Label(root, text="Command")
-    system_log_l = tk.Label(root, text="System Logs")
-    image_l = tk.Label(root, text="Picture place")
+    currect_abs_path_l = ctk.CTkLabel(root, text=path)
+    file_l = ctk.CTkLabel(root, text=f"Number of images = {fs_items_size}")
+    mapped_key_press_l = ctk.CTkLabel(root, text="Mapped key")
+    command_l = ctk.CTkLabel(root, text="Command")
+    system_log_l = ctk.CTkLabel(root, text="System Logs")
+    image_l = ctk.CTkLabel(root, text="")
 
     # packing
     currect_abs_path_l.pack()
@@ -143,16 +143,16 @@ def gui():
     command_l.pack()
     mapped_key_press_l.pack()
     system_log_l.pack()
-    image_l.pack(expand=True, fill=tk.BOTH)
+    image_l.pack(expand=True, fill=ctk.BOTH)
 
     if fs_items_size == 0:
-        file_l.config(text="No images here")
+        file_l.configure(text="No images here")
 
     image_gui_handlers = []
 
     def update_system_log_l(log: str):
         nonlocal system_log_l
-        system_log_l.config(text=log)
+        system_log_l.configure(text=log)
         print(log)
 
     def event_char(char):
@@ -163,58 +163,66 @@ def gui():
 
     def on_left(event):
         update_system_log_l("displaying left image")
-        mapped_key_press_l.config(text=event_char(event.char))
+        mapped_key_press_l.configure(text=event_char(event.char))
 
         nonlocal fs_item_curr_index
 
         if fs_items_size == 0:
-            command_l.config(text="No image")
+            command_l.configure(text="No image")
             return
 
         fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
-        file_l.config(text=list.result[fs_item_curr_index].full_name())
-        command_l.config(text="Prev photo")
+        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        command_l.configure(text="Prev photo")
         display_image_from_path(fs_item_curr_index)
 
     def on_right(event):
         update_system_log_l("displaying right image")
-        mapped_key_press_l.config(text=event_char(event.char))
+        mapped_key_press_l.configure(text=event_char(event.char))
         nonlocal fs_item_curr_index
 
         if fs_items_size == 0:
-            command_l.config(text="No image")
+            command_l.configure(text="No image")
             return
 
         fs_item_curr_index = np.clip(fs_item_curr_index + 1, 0, fs_items_size - 1)
-        file_l.config(text=list.result[fs_item_curr_index].full_name())
-        command_l.config(text="Next photo")
+        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        command_l.configure(text="Next photo")
         display_image_from_path(fs_item_curr_index)
 
     def on_deletion(event):
         update_system_log_l("deleting")
-        mapped_key_press_l.config(text=event_char(event.char))
-        command_l.config(text="Deleting photo")
+        mapped_key_press_l.configure(text=event_char(event.char))
+        command_l.configure(text="Deleting photo")
         nonlocal image_gui_handlers
         h = image_gui_handlers[fs_item_curr_index]
         h.toggleHighlight()
         h.update_highlight(image_l)
 
     def any_key(event):
-        mapped_key_press_l.config(text=event_char(event.char))
-        command_l.config(text=event.keysym)
+        mapped_key_press_l.configure(text=event_char(event.char))
+        command_l.configure(text=event.keysym)
 
     def display_image_from_path(index: int):
+        def get_fitted_size(img, max_w, max_h):
+            orig_w, orig_h = img.size
+            ratio = min(max_w / orig_w, max_h / orig_h)
+            return int(orig_w * ratio), int(orig_h * ratio)
+
         nonlocal image_gui_handlers
         h = image_gui_handlers[index]
         img = h.image
-        photo = ImageTk.PhotoImage(img)
-        image_l.config(image=photo)
-        image_l.image = photo
+        photo = ctk.CTkImage(
+            img,
+            size=get_fitted_size(img, image_l.winfo_width(), image_l.winfo_height()),
+        )
+        image_l.configure(image=photo)
         h.update_highlight(image_l)
 
     def init():
         update_system_log_l("Pre-creating FSItemGUIHandler objects")
         count_cache = 1
+
         for image in list.result:
             update_system_log_l(
                 f"Caching ({count_cache}/{len(list.result)}): {image.abs_path}"
@@ -222,7 +230,7 @@ def gui():
             img = Image.open(image.abs_path)
             img.thumbnail(
                 (root.winfo_screenwidth(), root.winfo_screenheight()),
-                Image.Resampling.LANCZOS,
+                Image.Resampling.BICUBIC,
             )
             image_gui_handlers.append(FSItemGUIHandler(img))
             count_cache += 1
