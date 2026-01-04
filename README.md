@@ -3,7 +3,18 @@
 "A passion project software that assist me in my photo management workflow as a
 photographer"
 
-## Instruction
+## Features
+
+- Displaying the images
+
+- Utilizing [VIM keybindings](./docs/keybindings.md)
+
+- Optimized:
+  - Utilizes caching:
+    - Utilize caching saves around _78%_-_93%_ of the processing time
+    - File relocation independent cache utilization
+
+## Instructions
 
 ### Using dockers containers
 
@@ -16,9 +27,13 @@ photographer"
 
 - Python version `3.12`
 - Python packages:
-  - numpy
-  - pillow
-  - customtkinter
+  - Individual packages:
+    - numpy
+    - pillow
+    - customtkinter
+    - xxhash
+  - Install the pacakges by excuting the following command on the "requirements.txt" file:
+    - `pip install -r requirements.txt`
 
 #### Steps
 
@@ -31,6 +46,10 @@ photographer"
 ## Future planned features
 
 - CLI:
-  - Working only from the terminal
+  - Working only from the terminal (Limited features)
 
 - Displaying RAW files
+
+- Performance improvements:
+  - Reducing RAM usage
+  - Implementing sliding-window caching

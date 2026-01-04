@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import customtkinter as ctk
+import xxhash
+import pickle
 from PIL import Image
 
 CURR_ABS_PATH = os.path.abspath("")
@@ -10,14 +12,17 @@ DEFAULT_COLOR_DELETED = "red"
 
 IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
 
+CACHE_FOLDER = "cache"
+
 
 class FileSystemItem:
-    def __init__(self, abs_path: str):
-        self.abs_path = abs_path
-        self.is_file = os.path.isfile(abs_path)
+    def __init__(self, abspath: str):
+        self.abspath: str = abspath
+        self.is_file: bool | None = os.path.isfile(abspath)
+        self.file_hash: str | None = hashFile(abspath) if self.is_file else None
 
         if self.is_file:
-            split_name = os.path.basename(abs_path).rsplit(".")
+            split_name = os.path.basename(abspath).rsplit(".")
             self.name = (
                 None
                 if split_name[0] == ""
@@ -27,16 +32,19 @@ class FileSystemItem:
             )
             self.extension = None if len(split_name) == 1 else split_name[-1]
         else:
-            self.name = os.path.basename(abs_path)
+            self.name = os.path.basename(abspath)
             self.extension = None
 
         self.extension = self.extension.lower() if self.extension else self.extension
 
     def display_details(self):
-        print(f"abs_path:\t{self.abs_path}")
+        print(f"full_name():\t{self.full_name()}")
         print(f"is_file:\t{self.is_file}")
+        print(f"is_image():\t{self.is_image()}")
         print(f"name:\t\t{self.name}")
         print(f"extension:\t{self.extension}")
+        print(f"file_hash:\t{self.file_hash}")
+        print(f"abs_path:\t{self.abspath}")
 
     def full_name(self):
         name = self.name if self.name else ""
@@ -50,16 +58,14 @@ class FileSystemItem:
         if not self.extension:
             return False
 
-        if self.extension in IMAGE_EXTENSIONS:
-            return True
-
-        return False
+        return self.extension in IMAGE_EXTENSIONS
 
 
 class FSItemGUIHandler:
-    def __init__(self, image):
+    def __init__(self, fs_item: FileSystemItem, image):
         self.image = image
         self.is_highlighted: bool = False
+        self.fs_item: FileSystemItem = fs_item
 
     def toggleHighlight(self):
         self.is_highlighted = not self.is_highlighted
@@ -93,10 +99,14 @@ def list_of_fs_items_at(abs_path: str, images_only: bool = False):
     # creating a fs_item
     file_paths = os.listdir(dir_path)
     files = []
+    counter_file_paths = 0
     for file_path in file_paths:
+        counter_file_paths += 1
         joined_path = os.path.join(dir_path, file_path)
         abs_path = os.path.abspath(joined_path)
         fs_item = FileSystemItem(abs_path)
+        progress = counter_file_paths / len(file_paths) * 100
+        print(f"Created file system item ({progress:06.2f}%): {fs_item.full_name()}")
         if images_only:
             if fs_item.is_image():
                 files.append(fs_item)
@@ -114,12 +124,64 @@ def prompt_path():
     return path if path else ""
 
 
+def hashFile(abspath_file: str):
+    hasher = xxhash.xxh64()
+    fd = os.open(abspath_file, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    try:
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    finally:
+        os.close(fd)
+    return hasher.hexdigest()
+
+
+def cacheImage(img_obj: FSItemGUIHandler, expect_no_clash: bool = False) -> bool:
+    if not img_obj.fs_item.file_hash:
+        return False
+
+    abspath_cache_folder = os.path.abspath(CACHE_FOLDER)
+
+    abspath_cache_obj = os.path.abspath(
+        os.path.join(abspath_cache_folder, img_obj.fs_item.file_hash)
+    )
+
+    if expect_no_clash and os.path.exists(abspath_cache_obj):
+        return False
+
+    with open(abspath_cache_obj, "wb") as file:
+        pickle.dump(img_obj, file)
+
+    return True
+
+
+def isImageCached(image_hash: str) -> bool:
+    abspath_cache_folder = os.path.join(CACHE_FOLDER)
+
+    for path_file in os.listdir(abspath_cache_folder):
+        if path_file == image_hash:
+            return True
+    return False
+
+
+def getCachedImage(image_hash: str):
+    abspath_cache = os.path.abspath(CACHE_FOLDER)
+    abspath_cached_image = os.path.join(abspath_cache, image_hash)
+    with open(abspath_cached_image, "rb") as file:
+        imgObj = pickle.load(file)
+        return imgObj
+
+
 def gui():
     path = os.path.abspath("gitignore/test")
+    print(f"Getting files at {path}")
     list = list_of_fs_items_at(path, images_only=True)
     if not list.is_successful:
         print(list.formatted_err_msg())
         return
+    print("Completed getting files")
 
     fs_items_size = len(list.result)
     fs_item_curr_index = -1
@@ -162,7 +224,7 @@ def gui():
         root.quit()
 
     def on_left(event):
-        update_system_log_l("displaying left image")
+        update_system_log_l("Displaying previous image")
         mapped_key_press_l.configure(text=event_char(event.char))
 
         nonlocal fs_item_curr_index
@@ -177,7 +239,7 @@ def gui():
         display_image_from_path(fs_item_curr_index)
 
     def on_right(event):
-        update_system_log_l("displaying right image")
+        update_system_log_l("Displaying next image")
         mapped_key_press_l.configure(text=event_char(event.char))
         nonlocal fs_item_curr_index
 
@@ -194,10 +256,12 @@ def gui():
         update_system_log_l("deleting")
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text="Deleting photo")
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[fs_item_curr_index]
-        h.toggleHighlight()
-        h.update_highlight(image_l)
+        if fs_item_curr_index != -1:
+            nonlocal image_gui_handlers
+            h = image_gui_handlers[fs_item_curr_index]
+            cacheImage(h)
+            h.toggleHighlight()
+            h.update_highlight(image_l)
 
     def any_key(event):
         mapped_key_press_l.configure(text=event_char(event.char))
@@ -221,19 +285,38 @@ def gui():
 
     def init():
         update_system_log_l("Pre-creating FSItemGUIHandler objects")
-        count_cache = 1
+        count_processed_images = 0
 
         for image in list.result:
+            count_processed_images += 1
+            progress = count_processed_images / len(list.result) * 100
             update_system_log_l(
-                f"Caching ({count_cache}/{len(list.result)}): {image.abs_path}"
+                f"Processing ({count_processed_images}/{len(list.result)}, {progress:06.2f}%):\t{image.full_name()}"
             )
-            img = Image.open(image.abs_path)
-            img.thumbnail(
-                (root.winfo_screenwidth(), root.winfo_screenheight()),
-                Image.Resampling.BICUBIC,
-            )
-            image_gui_handlers.append(FSItemGUIHandler(img))
-            count_cache += 1
+
+            image_hash = hashFile(image.abspath)
+            if isImageCached(image_hash):
+                update_system_log_l(f"Getting cached image:\t\t{image.file_hash}")
+                imgObj = getCachedImage(image_hash)
+            else:
+                update_system_log_l(f"Creating: cache item:\t\t{image.full_name()}")
+
+                img = Image.open(image.abspath)
+                img.thumbnail(
+                    (root.winfo_screenwidth(), root.winfo_screenheight()),
+                    Image.Resampling.BICUBIC,
+                )
+                imgObj = FSItemGUIHandler(image, img)
+                if not cacheImage(imgObj, expect_no_clash=True):
+                    update_system_log_l(f"Cannot cache image: {image.full_name()}")
+                    continue
+
+            image_gui_handlers.append(imgObj)
+
+        nonlocal fs_item_curr_index
+        fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
+        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        display_image_from_path(fs_item_curr_index)
 
     # escape keys
     root.bind("<Escape>", on_escape)
@@ -249,7 +332,7 @@ def gui():
     # any keys
     root.bind("<Key>", any_key)
 
-    root.after(10, init)
+    root.after(50, init)
     root.mainloop()
 
 
@@ -286,6 +369,15 @@ def cli():
 if __name__ == "__main__":
     print("\n\n----- Start of the program -----\n\n")
 
+    def makeFolders():
+        abspath_cache_folder = os.path.abspath(CACHE_FOLDER)
+
+        if not os.path.exists(abspath_cache_folder):
+            print("Creating non-existant cache folder")
+            os.makedirs(abspath_cache_folder)
+
+    makeFolders()
+
     command_quit = "q!"
 
     # choosing an interface
@@ -295,7 +387,7 @@ if __name__ == "__main__":
         print("\n\n")
         print(f"To quit, enter: '{command_quit}'")
         print("Pick an interface:")
-        print(f"{i_gui}. GUI (With windows)")
+        print(f"{i_gui}. GUI (With window interface)")
         print(f"{i_cli}. CLI (In terminal)")
 
         choice = input()
