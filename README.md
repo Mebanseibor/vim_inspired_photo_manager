@@ -1,7 +1,6 @@
 # README
 
-"A passion project software that assist me in my photo management workflow as a
-photographer"
+"Inspired by [VIM](https://github.com/vim/vim) keybindings, a software that manages photos"
 
 ## Features
 
@@ -16,37 +15,38 @@ photographer"
 
 ## Instructions
 
-### Using dockers containers
-
-> [!NOTE]
-> Only the CLI version is usable
-
-- Build an image using [`dockerfile`](./dockerfile)
-
 ### Using your base system
 
 #### Requirements
 
-- Python version `3.12`
-
-##### Python packages
+##### Python
 
 > [!TIP]
-> You can install the pacakages by excuting the following command on the "requirements.txt" file:
-> `pip install -r requirements.txt`
+>
+> - Commands to install Python in Linux:
+>   - `apt update && apt install -y python3 pip`
+> - You can install the packages by excuting the following command on the "requirements.txt" file:
+>   - `pip install -r requirements.txt`
 
+- Version: `3.12`
 - Python packages:
-  - Individual packages:
-    - numpy
-    - pillow
-    - customtkinter
-    - xxhash
+  - numpy
+  - pillow
+  - customtkinter
+  - xxhash
 
 #### Steps
 
 - Clone or download this repository:
 - Run the software:
   - Run the bash script [`start.sh`](./start.sh) or run the command `python -m core_modules.main`
+
+### Using dockers containers
+
+> [!NOTE]
+> Only the CLI version is usable
+
+- Build an image using [`dockerfile`](./dockerfile)
 
 ---
 
