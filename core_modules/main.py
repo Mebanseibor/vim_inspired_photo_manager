@@ -7,8 +7,18 @@ from PIL import Image
 
 CURR_ABS_PATH = os.path.abspath("")
 
-DEFAULT_COLOR_NEUTRAL = "gray"
-DEFAULT_COLOR_DELETED = "red"
+
+IMAGE_FG_COLOR_DEFAULT = 0
+IMAGE_FG_COLOR_KEEP = 1
+IMAGE_FG_COLOR_DELETE = 2
+IMAGE_FG_COLOR_TO_REVIEW = 3
+
+COLORS = {
+    IMAGE_FG_COLOR_DEFAULT: "white",
+    IMAGE_FG_COLOR_KEEP: "green",
+    IMAGE_FG_COLOR_DELETE: "red",
+    IMAGE_FG_COLOR_TO_REVIEW: "yellow",
+}
 
 IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
 
@@ -19,7 +29,6 @@ class FileSystemItem:
     def __init__(self, abspath: str):
         self.abspath: str = abspath
         self.is_file: bool | None = os.path.isfile(abspath)
-        self.file_hash: str | None = hashFile(abspath) if self.is_file else None
 
         if self.is_file:
             split_name = os.path.basename(abspath).rsplit(".")
@@ -36,6 +45,10 @@ class FileSystemItem:
             self.extension = None
 
         self.extension = self.extension.lower() if self.extension else self.extension
+
+        self.file_hash: str | None = (
+            hashFile(abspath, self.full_name()) if self.is_file else None
+        )
 
     def display_details(self):
         print(f"full_name():\t{self.full_name()}")
@@ -64,17 +77,13 @@ class FileSystemItem:
 class FSItemGUIHandler:
     def __init__(self, fs_item: FileSystemItem, image):
         self.image = image
-        self.is_highlighted: bool = False
+        self.highlight_color: int = IMAGE_FG_COLOR_DEFAULT
         self.fs_item: FileSystemItem = fs_item
 
-    def toggleHighlight(self):
-        self.is_highlighted = not self.is_highlighted
-
-    def update_highlight(self, image_label):
-        if self.is_highlighted:
-            image_label.configure(fg_color=DEFAULT_COLOR_DELETED)
-        else:
-            image_label.configure(fg_color=DEFAULT_COLOR_NEUTRAL)
+    def update_highlight(self, image_label, fg_color: int):
+        fg_color_str = COLORS.get(fg_color, IMAGE_FG_COLOR_DEFAULT)
+        image_label.configure(fg_color=fg_color_str)
+        self.highlight_color = fg_color
 
 
 class Result:
@@ -87,7 +96,9 @@ class Result:
         return f"Error: {self.err_msg}"
 
 
-def list_of_fs_items_at(abs_path: str, images_only: bool = False):
+def list_of_fs_items_at(
+    abs_path: str, images_only: bool = False, max_items: int | None = None
+):
     dir_path = os.path.join(CURR_ABS_PATH, abs_path)
 
     if not os.path.exists(dir_path):
@@ -100,18 +111,29 @@ def list_of_fs_items_at(abs_path: str, images_only: bool = False):
     file_paths = os.listdir(dir_path)
     files = []
     counter_file_paths = 0
+    counter_selected_items = 0
     for file_path in file_paths:
-        counter_file_paths += 1
         joined_path = os.path.join(dir_path, file_path)
         abs_path = os.path.abspath(joined_path)
         fs_item = FileSystemItem(abs_path)
+        counter_file_paths += 1
         progress = counter_file_paths / len(file_paths) * 100
-        print(f"Created file system item ({progress:06.2f}%): {fs_item.full_name()}")
+        print(f"Checked file system item ({progress:06.2f}%): {fs_item.full_name()}")
         if images_only:
             if fs_item.is_image():
                 files.append(fs_item)
+            else:
+                continue
         else:
             files.append(fs_item)
+
+        counter_selected_items += 1
+        if max_items:
+            if counter_selected_items >= max_items:
+                break
+
+    print(f"Number of fs items available:\t{len(file_paths)}")
+    print(f"Number of fs items selected:\t{counter_selected_items}")
 
     return Result(files)
 
@@ -124,8 +146,11 @@ def prompt_path():
     return path if path else ""
 
 
-def hashFile(abspath_file: str):
+def hashFile(abspath_file: str, salt: str):
     hasher = xxhash.xxh64()
+
+    hasher.update(salt.encode())
+
     fd = os.open(abspath_file, os.O_RDONLY | getattr(os, "O_BINARY", 0))
     try:
         while True:
@@ -177,13 +202,13 @@ def getCachedImage(image_hash: str):
 def gui():
     path = os.path.abspath("gitignore/test")
     print(f"Getting files at {path}")
-    list = list_of_fs_items_at(path, images_only=True)
-    if not list.is_successful:
-        print(list.formatted_err_msg())
+    list_fs_items = list_of_fs_items_at(path, images_only=True)
+    if not list_fs_items.is_successful:
+        print(list_fs_items.formatted_err_msg())
         return
     print("Completed getting files")
 
-    fs_items_size = len(list.result)
+    fs_items_size = len(list_fs_items.result)
     fs_item_curr_index = -1
 
     # main window
@@ -210,7 +235,7 @@ def gui():
     if fs_items_size == 0:
         file_l.configure(text="No images here")
 
-    image_gui_handlers = []
+    image_gui_handlers: list[FSItemGUIHandler] = []
 
     def update_system_log_l(log: str):
         nonlocal system_log_l
@@ -223,7 +248,7 @@ def gui():
     def on_escape(event):
         root.quit()
 
-    def on_left(event):
+    def on_previous(event):
         update_system_log_l("Displaying previous image")
         mapped_key_press_l.configure(text=event_char(event.char))
 
@@ -234,11 +259,11 @@ def gui():
             return
 
         fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
-        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
         command_l.configure(text="Prev photo")
         display_image_from_path(fs_item_curr_index)
 
-    def on_right(event):
+    def on_next(event):
         update_system_log_l("Displaying next image")
         mapped_key_press_l.configure(text=event_char(event.char))
         nonlocal fs_item_curr_index
@@ -248,20 +273,53 @@ def gui():
             return
 
         fs_item_curr_index = np.clip(fs_item_curr_index + 1, 0, fs_items_size - 1)
-        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
         command_l.configure(text="Next photo")
         display_image_from_path(fs_item_curr_index)
 
     def on_deletion(event):
-        update_system_log_l("deleting")
+        update_system_log_l("Deleting")
         mapped_key_press_l.configure(text=event_char(event.char))
-        command_l.configure(text="Deleting photo")
-        if fs_item_curr_index != -1:
-            nonlocal image_gui_handlers
-            h = image_gui_handlers[fs_item_curr_index]
-            cacheImage(h)
-            h.toggleHighlight()
-            h.update_highlight(image_l)
+        command_l.configure(text="Marking to delete")
+        if fs_item_curr_index == -1:
+            return
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[fs_item_curr_index]
+        h.update_highlight(image_l, IMAGE_FG_COLOR_DELETE)
+        cacheImage(h)
+
+    def on_keep(event):
+        update_system_log_l("Keep")
+        mapped_key_press_l.configure(text=event_char(event.char))
+        command_l.configure(text="Marking to keep")
+        if fs_item_curr_index == -1:
+            return
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[fs_item_curr_index]
+        h.update_highlight(image_l, IMAGE_FG_COLOR_KEEP)
+        cacheImage(h)
+
+    def on_clear(event):
+        update_system_log_l("Clear")
+        mapped_key_press_l.configure(text=event_char(event.char))
+        command_l.configure(text="Marking to clear")
+        if fs_item_curr_index == -1:
+            return
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[fs_item_curr_index]
+        h.update_highlight(image_l, IMAGE_FG_COLOR_DEFAULT)
+        cacheImage(h)
+
+    def on_review(event):
+        update_system_log_l("Review")
+        mapped_key_press_l.configure(text=event_char(event.char))
+        command_l.configure(text="Marking to review")
+        if fs_item_curr_index == -1:
+            return
+        nonlocal image_gui_handlers
+        h = image_gui_handlers[fs_item_curr_index]
+        h.update_highlight(image_l, IMAGE_FG_COLOR_TO_REVIEW)
+        cacheImage(h)
 
     def any_key(event):
         mapped_key_press_l.configure(text=event_char(event.char))
@@ -281,20 +339,20 @@ def gui():
             size=get_fitted_size(img, image_l.winfo_width(), image_l.winfo_height()),
         )
         image_l.configure(image=photo)
-        h.update_highlight(image_l)
+        h.update_highlight(image_l, h.highlight_color)
 
     def init():
         update_system_log_l("Pre-creating FSItemGUIHandler objects")
         count_processed_images = 0
 
-        for image in list.result:
+        for image in list_fs_items.result:
             count_processed_images += 1
-            progress = count_processed_images / len(list.result) * 100
+            progress = count_processed_images / len(list_fs_items.result) * 100
             update_system_log_l(
-                f"Processing ({count_processed_images}/{len(list.result)}, {progress:06.2f}%):\t{image.full_name()}"
+                f"Processing ({count_processed_images}/{len(list_fs_items.result)}, {progress:06.2f}%):\t{image.full_name()}"
             )
 
-            image_hash = hashFile(image.abspath)
+            image_hash = hashFile(image.abspath, image.full_name())
             if isImageCached(image_hash):
                 update_system_log_l(f"Getting cached image:\t\t{image.file_hash}")
                 imgObj = getCachedImage(image_hash)
@@ -315,19 +373,22 @@ def gui():
 
         nonlocal fs_item_curr_index
         fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
-        file_l.configure(text=list.result[fs_item_curr_index].full_name())
+        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
         display_image_from_path(fs_item_curr_index)
 
     # escape keys
     root.bind("<Escape>", on_escape)
     root.bind("q", on_escape)
 
-    # navigation
-    root.bind("h", on_left)
-    root.bind("l", on_right)
+    # picture operations
+    root.bind("j", on_deletion)
+    root.bind("k", on_keep)
+    root.bind("c", on_clear)
+    root.bind("m", on_review)
 
-    # deletion
-    root.bind("x", on_deletion)
+    # navigation
+    root.bind("l", on_next)
+    root.bind("h", on_previous)
 
     # any keys
     root.bind("<Key>", any_key)

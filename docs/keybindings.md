@@ -6,5 +6,8 @@
 | -------- | --------------- |
 | l        | Next photo      |
 | h        | Previous photo  |
-| x        | Mark for delete |
+| j        | Mark for delete |
+| k        | Mark for keep   |
+| c        | Mark for clear  |
+| m        | Mark for review |
 | q or Esc | Quit            |

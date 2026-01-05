@@ -18,22 +18,29 @@ photographer"
 
 ### Using dockers containers
 
+> [!NOTE]
+> Only the CLI version is usable
+
 - Build an image using [`dockerfile`](./dockerfile)
-- Only the CLI version is usable
 
 ### Using your base system
 
 #### Requirements
 
 - Python version `3.12`
+
+##### Python packages
+
+> [!TIP]
+> You can install the pacakages by excuting the following command on the "requirements.txt" file:
+> `pip install -r requirements.txt`
+
 - Python packages:
   - Individual packages:
     - numpy
     - pillow
     - customtkinter
     - xxhash
-  - Install the pacakges by excuting the following command on the "requirements.txt" file:
-    - `pip install -r requirements.txt`
 
 #### Steps
 
