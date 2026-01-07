@@ -1,7 +1,7 @@
 import os
 
 import customtkinter as ctk
-import numpy as np
+from threading import Event
 from PIL import Image
 
 from ..cache_management import cache_manager as cM
@@ -20,53 +20,54 @@ COLORS = {
 }
 
 
+ROOT: ctk.CTk
+
+
 class FSItemGUIHandler:
     def __init__(self, fs_item: fsM.FileSystemItem, image):
         self.image = image
         self.highlight_color: int = IMAGE_FG_COLOR_DEFAULT
         self.fs_item: fsM.FileSystemItem = fs_item
 
-    def update_highlight(self, image_label, fg_color: int):
-        fg_color_str = COLORS.get(fg_color, IMAGE_FG_COLOR_DEFAULT)
-        image_label.configure(fg_color=fg_color_str)
-        self.highlight_color = fg_color
-
 
 def gui():
+    gui_is_alive_event: Event = Event()
     while True:
-        path = fsM.promptPath(prompt_till_valid=True, quit_command="!q")
+        path = fsM.promptPath(prompt_till_valid=True, quit_command="q!")
         if not path:
             return
 
         abspath_dir = os.path.abspath(path)
 
-        print(f"Getting files at {abspath_dir}")
-        list_fs_items = fsM.list_of_fs_items_at(abspath_dir, images_only=True)
-        if not list_fs_items.is_successful:
-            print(list_fs_items.formatted_err_msg())
-            return
+        print(f"Getting filepaths at {abspath_dir}")
+        filepaths = fsM.getFilePathsAtAbspath(abspath_dir, images_only=True)
         print("Completed getting files")
 
-        if len(list_fs_items.result) != 0:
-            break
+        if filepaths is None:
+            print(f"Can't get filepaths at {abspath_dir}")
+            continue
 
-        print(f"No images was found at this directory: {abspath_dir}\n")
+        if len(filepaths) == 0:
+            print(f"No images was found at this directory: {abspath_dir}\n")
+            continue
 
-    fs_items_size = len(list_fs_items.result)
-    fs_item_curr_index = -1
+        break
+
+    filepaths_size = len(filepaths)
 
     # main window
-    root = ctk.CTk()
-    root.attributes("-fullscreen", True)
-    root.title("Vim Photo Manager")
+    global ROOT
+    ROOT = ctk.CTk()
+    ROOT.attributes("-fullscreen", True)
+    ROOT.title("Vim Photo Manager")
 
     # components
-    currect_abs_path_l = ctk.CTkLabel(root, text=abspath_dir)
-    file_l = ctk.CTkLabel(root, text=f"Number of images = {fs_items_size}")
-    mapped_key_press_l = ctk.CTkLabel(root, text="Mapped key")
-    command_l = ctk.CTkLabel(root, text="Command")
-    system_log_l = ctk.CTkLabel(root, text="System Logs")
-    image_l = ctk.CTkLabel(root, text="")
+    currect_abs_path_l = ctk.CTkLabel(ROOT, text=abspath_dir)
+    file_l = ctk.CTkLabel(ROOT, text=f"Number of images = {filepaths_size}")
+    mapped_key_press_l = ctk.CTkLabel(ROOT, text="Mapped key")
+    command_l = ctk.CTkLabel(ROOT, text="Command")
+    system_log_l = ctk.CTkLabel(ROOT, text="System Logs")
+    image_l = ctk.CTkLabel(ROOT, text="")
 
     # packing
     currect_abs_path_l.pack()
@@ -76,10 +77,10 @@ def gui():
     system_log_l.pack()
     image_l.pack(expand=True, fill=ctk.BOTH)
 
-    if fs_items_size == 0:
+    if filepaths_size == 0:
         file_l.configure(text="No images here")
 
-    image_gui_handlers: list[FSItemGUIHandler] = []
+    cacheHandler: cM.ImageItemCacheHandler
 
     def update_system_log_l(log: str):
         nonlocal system_log_l
@@ -90,152 +91,159 @@ def gui():
         return f"'{char}'"
 
     def on_escape(event):
-        root.quit()
+        ROOT.quit()
 
     def on_previous(event):
         update_system_log_l("Displaying previous image")
         mapped_key_press_l.configure(text=event_char(event.char))
 
-        nonlocal fs_item_curr_index
+        nonlocal cacheHandler
 
-        if fs_items_size == 0:
+        if filepaths_size == 0:
             command_l.configure(text="No image")
             return
 
-        fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
-        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
+        cacheHandler.prev()
+        file_l.configure(text=cacheHandler.getFileNameFromCurr())
         command_l.configure(text="Prev photo")
-        display_image_from_path(fs_item_curr_index)
+        loadImageFromCacheHandler()
 
     def on_next(event):
         update_system_log_l("Displaying next image")
         mapped_key_press_l.configure(text=event_char(event.char))
-        nonlocal fs_item_curr_index
+        nonlocal cacheHandler
 
-        if fs_items_size == 0:
+        if filepaths_size == 0:
             command_l.configure(text="No image")
             return
 
-        fs_item_curr_index = np.clip(fs_item_curr_index + 1, 0, fs_items_size - 1)
-        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
+        cacheHandler.next()
+        file_l.configure(text=cacheHandler.getFileNameFromCurr())
         command_l.configure(text="Next photo")
-        display_image_from_path(fs_item_curr_index)
+        loadImageFromCacheHandler()
 
     def on_deletion(event):
         update_system_log_l("Deleting")
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text="Marking to delete")
-        if fs_item_curr_index == -1:
+
+        nonlocal cacheHandler
+        fg_color = IMAGE_FG_COLOR_DELETE
+        if not cacheHandler.updateHighlightColor(fg_color):
             return
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[fs_item_curr_index]
-        h.update_highlight(image_l, IMAGE_FG_COLOR_DELETE)
-        cM.cacheImage(h)
+
+        updateFG(image_l, fg_color)
 
     def on_keep(event):
         update_system_log_l("Keep")
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text="Marking to keep")
-        if fs_item_curr_index == -1:
+
+        nonlocal cacheHandler
+        fg_color = IMAGE_FG_COLOR_KEEP
+        if not cacheHandler.updateHighlightColor(fg_color):
             return
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[fs_item_curr_index]
-        h.update_highlight(image_l, IMAGE_FG_COLOR_KEEP)
-        cM.cacheImage(h)
+
+        updateFG(image_l, fg_color)
 
     def on_clear(event):
         update_system_log_l("Clear")
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text="Marking to clear")
-        if fs_item_curr_index == -1:
+
+        nonlocal cacheHandler
+        fg_color = IMAGE_FG_COLOR_DEFAULT
+        if not cacheHandler.updateHighlightColor(fg_color):
             return
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[fs_item_curr_index]
-        h.update_highlight(image_l, IMAGE_FG_COLOR_DEFAULT)
-        cM.cacheImage(h)
+
+        updateFG(image_l, fg_color)
 
     def on_review(event):
         update_system_log_l("Review")
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text="Marking to review")
-        if fs_item_curr_index == -1:
+
+        nonlocal cacheHandler
+        fg_color = IMAGE_FG_COLOR_TO_REVIEW
+        if not cacheHandler.updateHighlightColor(fg_color):
             return
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[fs_item_curr_index]
-        h.update_highlight(image_l, IMAGE_FG_COLOR_TO_REVIEW)
-        cM.cacheImage(h)
+
+        updateFG(image_l, fg_color)
 
     def any_key(event):
         mapped_key_press_l.configure(text=event_char(event.char))
         command_l.configure(text=event.keysym)
 
-    def display_image_from_path(index: int):
+    def loadImageFromCacheHandler() -> bool:
         def get_fitted_size(img, max_w, max_h):
             orig_w, orig_h = img.size
             ratio = min(max_w / orig_w, max_h / orig_h)
             return int(orig_w * ratio), int(orig_h * ratio)
 
-        nonlocal image_gui_handlers
-        h = image_gui_handlers[index]
-        img = h.image
+        nonlocal cacheHandler
+        img = cacheHandler.getImage()
+        if not img:
+            print("Error: Cannot get Image of cache handler")
+            return False
         photo = ctk.CTkImage(
             img,
             size=get_fitted_size(img, image_l.winfo_width(), image_l.winfo_height()),
         )
         image_l.configure(image=photo)
-        h.update_highlight(image_l, h.highlight_color)
+        highlight_color = cacheHandler.getHighlightColor()
+        if highlight_color is None:
+            print("Error: Cannot get highlight_color from the cache handler")
+            return False
+        updateFG(image_l, highlight_color)
+        return True
 
     def init():
-        update_system_log_l("Pre-creating FSItemGUIHandler objects")
-        count_processed_images = 0
+        update_system_log_l("Creating cache handler")
 
-        for image in list_fs_items.result:
-            count_processed_images += 1
-            progress = count_processed_images / len(list_fs_items.result) * 100
-            update_system_log_l(
-                f"Processing ({count_processed_images}/{len(list_fs_items.result)}, {progress:06.2f}%):\t{image.full_name()}"
-            )
+        nonlocal cacheHandler
+        cacheHandler = cM.ImageItemCacheHandler(filepaths)
+        update_system_log_l("Created cache handler")
 
-            image_hash = fsM.hashFile(image.abspath, image.full_name())
-            if cM.isImageCached(image_hash):
-                update_system_log_l(f"Getting cached image:\t\t{image.file_hash}")
-                imgObj = cM.getCachedImage(image_hash)
-            else:
-                update_system_log_l(f"Creating: cache item:\t\t{image.full_name()}")
-
-                img = Image.open(image.abspath)
-                img.thumbnail(
-                    (root.winfo_screenwidth(), root.winfo_screenheight()),
-                    Image.Resampling.BICUBIC,
-                )
-                imgObj = FSItemGUIHandler(image, img)
-                if not cM.cacheImage(imgObj, expect_no_clash=True):
-                    update_system_log_l(f"Cannot cache image: {image.full_name()}")
-                    continue
-
-            image_gui_handlers.append(imgObj)
-
-        nonlocal fs_item_curr_index
-        fs_item_curr_index = np.clip(fs_item_curr_index - 1, 0, fs_items_size - 1)
-        file_l.configure(text=list_fs_items.result[fs_item_curr_index].full_name())
-        display_image_from_path(fs_item_curr_index)
+        curr = cacheHandler.curr
+        if not curr:
+            return
+        file_l.configure(text=os.path.basename(curr.image_item.fs_item.fullName()))
+        cM.initCachingForDirectory(abspath_dir, gui_is_alive_event)
 
     # escape keys
-    root.bind("<Escape>", on_escape)
-    root.bind("q", on_escape)
+    ROOT.bind("<Escape>", on_escape)
+    ROOT.bind("q", on_escape)
 
     # picture operations
-    root.bind("j", on_deletion)
-    root.bind("k", on_keep)
-    root.bind("c", on_clear)
-    root.bind("m", on_review)
+    ROOT.bind("j", on_deletion)
+    ROOT.bind("k", on_keep)
+    ROOT.bind("c", on_clear)
+    ROOT.bind("m", on_review)
 
     # navigation
-    root.bind("l", on_next)
-    root.bind("h", on_previous)
+    ROOT.bind("l", on_next)
+    ROOT.bind("h", on_previous)
 
     # any keys
-    root.bind("<Key>", any_key)
+    ROOT.bind("<Key>", any_key)
 
-    root.after(50, init)
-    root.mainloop()
+    init()
+    ROOT.after(50, loadImageFromCacheHandler)
+    ROOT.mainloop()
+    gui_is_alive_event.set()
+
+
+def createImageFromAbspath(abspath: str):
+    global ROOT
+    img = Image.open(abspath)
+    img.thumbnail(
+        (ROOT.winfo_screenwidth(), ROOT.winfo_screenheight()),
+        Image.Resampling.BICUBIC,
+    )
+    return img
+
+
+def updateFG(label: ctk.CTkLabel, fg_color: int) -> bool:
+    fg_color_str = COLORS.get(fg_color, IMAGE_FG_COLOR_DEFAULT)
+    label.configure(fg_color=fg_color_str)
+    return True

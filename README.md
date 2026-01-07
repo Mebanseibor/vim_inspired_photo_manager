@@ -1,4 +1,4 @@
-# README
+# VIM inspired Photo Manager
 
 "Inspired by [VIM](https://github.com/vim/vim) keybindings, a software that manages photos"
 
@@ -10,7 +10,8 @@
 
 - Optimized:
   - Utilizes caching:
-    - Utilize caching saves around _78%_-_93%_ of the processing time
+    - Utilize caching saves processing time on subsequent processing of the same
+      image
     - File relocation independent cache utilization
 
 ## Instructions
@@ -56,7 +57,3 @@
   - Working only from the terminal (Limited features)
 
 - Displaying RAW files
-
-- Performance improvements:
-  - Reducing RAM usage
-  - Implementing sliding-window caching
