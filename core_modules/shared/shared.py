@@ -1,6 +1,9 @@
-import os
+CURR_ABS_PATH: str | None = None
+BASE_ABS_PATH: str | None = None
+BASE_FILEPATHS: dict[str, list[str]] | None = None
 
-CURR_ABS_PATH = os.path.abspath("")
+APP_WIDTH: int | None = None
+APP_HEIGHT: int | None = None
 
 
 class Result:

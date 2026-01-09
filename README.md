@@ -4,23 +4,27 @@
 
 ## Features
 
-- Displaying the images
+- Displaying images
+
+- Visually see the intended action for the image:
+  - Actions:
+    - Keep
+    - Delete
+    - Mark for review
 
 - Utilizing [VIM keybindings](./docs/keybindings.md)
 
-- Optimized:
-  - Utilizes caching:
-    - Utilize caching saves processing time on subsequent processing of the same
-      image
-    - File relocation independent cache utilization
+### Other features
+
+- Utilizes caching:
+  - Saves processing time on subsequent processing of the same image
+  - Cache utilization is independent of file relocation
 
 ## Instructions
 
-### Using your base system
+### Requirements
 
-#### Requirements
-
-##### Python
+#### Python
 
 > [!TIP]
 >
@@ -36,24 +40,15 @@
   - customtkinter
   - xxhash
 
-#### Steps
+### Steps
 
 - Clone or download this repository:
 - Run the software:
   - Run the bash script [`start.sh`](./start.sh) or run the command `python -m core_modules.main`
 
-### Using dockers containers
-
-> [!NOTE]
-> Only the CLI version is usable
-
-- Build an image using [`dockerfile`](./dockerfile)
-
 ---
 
 ## Future planned features
 
-- CLI:
-  - Working only from the terminal (Limited features)
-
+- Deleting intended images
 - Displaying RAW files

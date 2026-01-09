@@ -22,18 +22,18 @@ class ImageCacheItem:
 
 
 class ImageItemCacheHandler:
-    def __init__(self, abspath_fs_items: list[str]):
+    def __init__(self, abspaths_images: list[str]):
         print("Creating image item cache handler")
         self.curr: ImageCacheItem | None = None
         self.head: ImageCacheItem | None = None
         self.tail: ImageCacheItem | None = None
-        self.gui_item_handlers = abspath_fs_items
-        self.index_curr_ref: int | None = 0 if len(self.gui_item_handlers) else None
+        self.abspaths_images: list[str] = abspaths_images
+        self.index_curr_ref: int | None = 0 if len(self.abspaths_images) else None
         self.size_left: int = 0
         self.size_right: int = 0
 
-        for i in range(min(CACHE_HANDLER_WINDOW_SIZE + 1, len(abspath_fs_items))):
-            cacheItem = ImageCacheItem(abspath_fs_items[i])
+        for i in range(min(CACHE_HANDLER_WINDOW_SIZE + 1, len(self.abspaths_images))):
+            cacheItem = ImageCacheItem(self.abspaths_images[i])
             if not self.head:
                 self.head = cacheItem
                 self.tail = self.head
@@ -181,10 +181,10 @@ class ImageItemCacheHandler:
         return self.curr
 
     def getAbspathAtIndex(self, index: int) -> str | None:
-        print(f"Getting FS Item at:\t{index}")
+        print(f"Getting abspath at:\t{index}")
         return (
-            self.gui_item_handlers[index]
-            if index >= 0 and index < len(self.gui_item_handlers)
+            self.abspaths_images[index]
+            if index >= 0 and index < len(self.abspaths_images)
             else None
         )
 
@@ -289,14 +289,16 @@ def getCachedImage(image_hash: str) -> guiM.FSItemGUIHandler | None:
         return None
 
 
-def initCachingForDirectory(abspath_dir: str, event: t.Event):
+def initCachingForDirectory(abspath_dir: str, gui_event: t.Event, start_event: t.Event):
+    print("Caching directory: Started")
+
     def multi_threaded_caching():
         filepaths = os.listdir(abspath_dir)
         abspaths = []
 
         for filepath in filepaths:
             abspath = os.path.abspath(os.path.join(abspath_dir, filepath))
-            if fsM.isImageFromAbspath(abspath):
+            if fsM.isAbspathOfFileTypes(abspath, fsM.IMAGE_EXTENSIONS):
                 abspaths.append(abspath)
 
         sem = t.Semaphore(2)
@@ -307,9 +309,10 @@ def initCachingForDirectory(abspath_dir: str, event: t.Event):
 
         for abspath in abspaths:
             if sem.acquire():
-                if event.is_set():
+                if gui_event.is_set() or start_event.is_set():
                     return
                 t.Thread(target=task, args=(abspath,), daemon=False).start()
+        print("Caching directory: Completed")
 
     t.Thread(target=multi_threaded_caching, daemon=True).start()
 

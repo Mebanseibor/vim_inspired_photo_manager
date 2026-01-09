@@ -1,16 +1,17 @@
 import os
 import xxhash
 
-from ..shared import shared as s
-
 IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]
+RAW_EXTENSIONS = ["arw"]
+
+IMAGES_ONLY_KEY = "images_only"
+RAWS_ONLY_KEY = "raw_files_only"
 
 
 class FileSystemItem:
     def __init__(self, abspath: str):
         self.abspath: str = abspath
         self.is_file: bool | None = os.path.isfile(abspath)
-
         if self.is_file:
             split_name = os.path.basename(abspath).rsplit(".")
             self.name = (
@@ -54,6 +55,15 @@ class FileSystemItem:
 
         return self.extension in IMAGE_EXTENSIONS
 
+    def is_raw(self) -> bool:
+        if not self.is_file:
+            return False
+
+        if not self.extension:
+            return False
+
+        return self.extension in RAW_EXTENSIONS
+
 
 def hashFile(abspath_file: str, salt: str):
     hasher = xxhash.xxh64()
@@ -72,52 +82,13 @@ def hashFile(abspath_file: str, salt: str):
     return hasher.hexdigest()
 
 
-def list_of_fs_items_at(
-    abspath_dir: str, images_only: bool = False, max_items: int | None = None
-) -> s.Result:
-    if not os.path.exists(abspath_dir):
-        return s.Result(None, False, f"Path '{abspath_dir}' does not exist")
-
-    if not os.path.isdir(abspath_dir):
-        return s.Result(None, False, f"Path '{abspath_dir}' was not a directory")
-
-    # creating a fs_item
-    file_paths = os.listdir(abspath_dir)
-    files = []
-    counter_file_paths = 0
-    counter_selected_items = 0
-    for file_path in file_paths:
-        joined_path = os.path.join(abspath_dir, file_path)
-        abspath_file = os.path.abspath(joined_path)
-        fs_item = FileSystemItem(abspath_file)
-        counter_file_paths += 1
-        progress = counter_file_paths / len(file_paths) * 100
-        print(f"Checked file system item ({progress:06.2f}%): {fs_item.fullName()}")
-        if images_only:
-            if fs_item.is_image():
-                files.append(fs_item)
-            else:
-                continue
-        else:
-            files.append(fs_item)
-
-        counter_selected_items += 1
-        if max_items:
-            if counter_selected_items >= max_items:
-                break
-
-    print(f"Number of fs items available:\t{len(file_paths)}")
-    print(f"Number of fs items selected:\t{counter_selected_items}")
-
-    return s.Result(files)
-
-
 def promptPath(
-    prompt_till_valid: bool = False, quit_command: str | None = None
+    text: str | None, prompt_till_valid: bool = False, quit_command: str | None = None
 ) -> str | None:
     quit_command_message = f" (To quit, enter {quit_command})" if quit_command else ""
     while True:
-        print(f"Enter path{quit_command_message}:")
+        prompt_text = text if text else f"Enter path{quit_command_message}:"
+        print(prompt_text)
         path = input().strip()
 
         if quit_command and path == quit_command:
@@ -127,19 +98,8 @@ def promptPath(
             return path
 
         abspath = os.path.abspath(path)
-        pathExists: bool = os.path.exists(abspath)
-        isDir: bool = os.path.isdir(abspath)
-
-        if pathExists and isDir:
+        if isDirValid(abspath):
             return abspath
-
-        if not pathExists:
-            print(f"Path does not exist: {abspath}\n")
-            continue
-
-        if not isDir:
-            print(f"Path is not a directory: {abspath}\n")
-            continue
 
 
 def getFullNameFromAbspath(
@@ -160,9 +120,10 @@ def getFullNameFromAbspath(
     return name + (extension.lower() if lowercase_extension else extension)
 
 
-def getFilePathsAtAbspath(
-    abspath_dir: str, images_only: bool = False, max_items: int | None = None
-) -> list[str] | None:
+def getFilePathsAtAbspathForFormats(
+    abspath_dir: str,
+    file_formats: dict[str, bool],
+) -> dict[str, list[str]] | None:
     if not os.path.exists(abspath_dir) or not os.path.isdir(abspath_dir):
         return None
 
@@ -172,20 +133,30 @@ def getFilePathsAtAbspath(
     for file_path in file_paths:
         abspath_files.append(os.path.abspath(os.path.join(abspath_dir, file_path)))
 
-    if not images_only:
-        return abspath_files
+    result = {}
 
+    abspath_files_raws_only = []
     abspath_files_images_only = []
 
     for file_path in abspath_files:
         abspath_file = os.path.abspath(os.path.join(abspath_dir, file_path))
-        if isImageFromAbspath(abspath_file):
+
+        if file_formats.get(RAWS_ONLY_KEY) and isAbspathOfFileTypes(
+            abspath_file, RAW_EXTENSIONS
+        ):
+            abspath_files_raws_only.append(abspath_file)
+        if file_formats.get(IMAGES_ONLY_KEY) and isAbspathOfFileTypes(
+            abspath_file, IMAGE_EXTENSIONS
+        ):
             abspath_files_images_only.append(abspath_file)
 
-    return abspath_files_images_only
+    result[IMAGES_ONLY_KEY] = abspath_files_images_only
+    result[RAWS_ONLY_KEY] = abspath_files_raws_only
+
+    return result
 
 
-def isImageFromAbspath(abspath: str) -> bool | None:
+def isAbspathOfFileTypes(abspath: str, file_types: list[str]) -> bool | None:
     if not os.path.exists(abspath):
         return None
 
@@ -196,4 +167,19 @@ def isImageFromAbspath(abspath: str) -> bool | None:
     if len(split_name) == 1:
         return False
 
-    return split_name[-1].lower() in IMAGE_EXTENSIONS
+    return split_name[-1].lower() in file_types
+
+
+def isDirValid(abspath: str) -> bool:
+    pathExists: bool = os.path.exists(abspath)
+    isDir: bool = os.path.isdir(abspath)
+
+    if not pathExists:
+        print(f"Path does not exist: {abspath}\n")
+        return False
+
+    if not isDir:
+        print(f"Path is not a directory: {abspath}\n")
+        return False
+
+    return True
