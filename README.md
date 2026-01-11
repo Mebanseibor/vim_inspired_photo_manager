@@ -48,7 +48,7 @@
 
 ---
 
-## Future planned features
+## Planned future features
 
 - Deleting intended images
 - Displaying RAW files

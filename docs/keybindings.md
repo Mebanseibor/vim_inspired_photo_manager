@@ -10,6 +10,8 @@
 
 ## Image Screen
 
+### Main Page
+
 | Key      | Action              |
 | -------- | ------------------- |
 | l        | Next photo          |
@@ -19,3 +21,9 @@
 | c        | Mark for clear      |
 | m        | Mark for review     |
 | q or Esc | Quit to Home screen |
+
+### Summary Page
+
+| Key      | Action            |
+| -------- | ----------------- |
+| q or Esc | Quit to Main Page |
