@@ -25,6 +25,28 @@ COLORS = {
 }
 
 
+class LabelAndValue(ctk.CTkFrame):
+    def __init__(
+        self,
+        parent: Any,
+        label: str,
+        value: str,
+        **kwargs,
+    ):
+        super().__init__(parent, **kwargs)
+
+        self.label: ctk.CTkLabel = ctk.CTkLabel(self, text=label)
+        self.label.pack(side="left")
+
+        self.value: ctk.CTkLabel = ctk.CTkLabel(self, text=value)
+        self.value.pack(padx=(10, 0), anchor="w")
+
+    def set_value(self, value: str | int):
+        if type(value) is int:
+            value = str(value)
+        self.value.configure(text=value)
+
+
 class ImageGallery(ctk.CTkFrame):
     def __init__(
         self,
@@ -38,7 +60,8 @@ class ImageGallery(ctk.CTkFrame):
 
         self.pack(fill=ctk.X)
 
-        self.image_size = image_size
+        self.images: list[str] = []
+        self.max_image_side_length = image_size
         self.row_index = 0
         self.column_index = 0
 
@@ -47,20 +70,32 @@ class ImageGallery(ctk.CTkFrame):
         )
         self.indicator.pack(fill=ctk.Y, side="left")
 
+        self.title_frame: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.title_frame.pack(fill=ctk.X)
+
         title_font = ctk.CTkFont(weight="bold", size=16)
-        self.title: ctk.CTkLabel = ctk.CTkLabel(
-            self,
+        self.title_name: ctk.CTkLabel = ctk.CTkLabel(
+            self.title_frame,
             text=title,
             font=title_font,
             anchor="w",
             justify="left",
         )
-        self.title.pack(fill=ctk.X)
+        self.title_name.pack(fill=ctk.X, side="left")
+
+        self.title_total_images: ctk.CTkLabel = ctk.CTkLabel(
+            self.title_frame,
+            text="0",
+            font=title_font,
+            anchor="w",
+            justify="right",
+        )
+        self.title_total_images.pack(fill=ctk.X, after=self.title_name, side="right")
 
         self.max_gallery_width = (
             sh.APP_WIDTH if sh.APP_WIDTH else 800 - self.indicator.winfo_width()
         )
-        self.max_column = int(self.max_gallery_width / self.image_size)
+        self.max_column = int(self.max_gallery_width / self.max_image_side_length)
         self.images_container: ctk.CTkFrame = ctk.CTkFrame(self)
         self.images_container.pack(expand=True, fill=ctk.BOTH)
 
@@ -69,33 +104,57 @@ class ImageGallery(ctk.CTkFrame):
         self.column_index = 0
         for child in self.images_container.winfo_children():
             child.destroy()
+        self.images = []
+        self.update_title_total_images()
         self.update_idletasks()
 
     def add_image(self, image: FSItemGUIHandler):
+        self.images.append(image.fs_item.abspath)
+
+        self.update_title_total_images()
+
+        image_container: ctk.CTkFrame = ctk.CTkFrame(self.images_container)
         image_item: ctk.CTkImage = ctk.CTkImage(
             image.image,
-            size=get_fitted_size(image.image, self.image_size, self.image_size),
+            size=get_fitted_size(
+                image.image, self.max_image_side_length, self.max_image_side_length
+            ),
         )
         image_view: ctk.CTkLabel = ctk.CTkLabel(
-            self.images_container,
+            image_container,
             text="",
             image=image_item,
             fg_color="gray",
             corner_radius=2,
         )
+        image_view.pack(fill=ctk.BOTH, expand=True)
+
+        image_position: ctk.CTkLabel = ctk.CTkLabel(
+            image_view,
+            text=str(len(self.images)),
+            text_color="white",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            corner_radius=12,
+            height=0,
+        )
+
+        image_position.place(relx=1.0, rely=0.0, anchor="ne")
 
         current_row, current_col = self.row_index, self.column_index
-
         self.column_index = (self.column_index + 1) % self.max_column
 
         if self.column_index == 0:
             self.row_index += 1
 
         self.after_idle(
-            lambda: image_view.grid(
+            lambda: image_container.grid(
                 row=current_row, column=current_col, padx=2, pady=2, sticky="nsew"
             )
         )
+
+    def update_title_total_images(self):
+        self.title_total_images.configure(text=str(len(self.images)))
+        self.update_idletasks()
 
 
 class SummaryScreen(ctk.CTkFrame):
@@ -111,15 +170,33 @@ class SummaryScreen(ctk.CTkFrame):
         self.filepaths = filepaths
 
         self.refresh_event: Event = Event()
-        self.images_to_keep: list[str] = []
-        self.images_to_dump: list[str] = []
 
         self.image_size = 128
 
-        title_font = ctk.CTkFont(weight="bold", size=20)
+        page_title_font = ctk.CTkFont(weight="bold", size=20)
+        self.page_title_label = ctk.CTkLabel(
+            self, text="Summary Page", font=page_title_font
+        )
+        self.page_title_label.pack(fill=ctk.X)
 
-        self.title_label = ctk.CTkLabel(self, text="Summary Page", font=title_font)
-        self.title_label.pack(fill=ctk.X)
+        self.details_container: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.details_container.pack(fill=ctk.X, padx=4)
+
+        self.summary_details_images_to_keep_lav: LabelAndValue = LabelAndValue(
+            self.details_container, "Images to keep:", "0"
+        )
+        self.summary_details_images_to_keep_lav.pack(fill=ctk.X)
+
+        self.summary_details_images_to_dump_lav: LabelAndValue = LabelAndValue(
+            self.details_container, "Images to dump:", "0"
+        )
+        self.summary_details_images_to_dump_lav.pack(fill=ctk.X)
+
+        self.unmarked_images: list[str] = []
+        self.summary_details_unmarked_images: LabelAndValue = LabelAndValue(
+            self.details_container, "Unmarked images:", str(len(self.unmarked_images))
+        )
+        self.summary_details_unmarked_images.pack(fill=ctk.X)
 
         # scrollable frame
         self.scrollable_frame_for_galleries = ctk.CTkScrollableFrame(self)
@@ -155,10 +232,14 @@ class SummaryScreen(ctk.CTkFrame):
     def refresh_list(self):
         self.refresh_event.set()
         self.refresh_event = Event()
-        self.images_to_keep = []
-        self.images_to_dump = []
+
+        self.unmarked_images = []
+        self.summary_details_images_to_keep_lav.set_value("0")
+        self.summary_details_images_to_dump_lav.set_value("0")
+        self.summary_details_unmarked_images.set_value("0")
         self.images_gallery_to_keep.clear_gallery()
         self.images_gallery_to_dump.clear_gallery()
+
         self.update_idletasks()
 
         for abspath_image in self.filepaths[fsM.IMAGES_ONLY_KEY]:
@@ -170,11 +251,20 @@ class SummaryScreen(ctk.CTkFrame):
             if not temp:
                 return
             if temp.highlight_color == IMAGE_FG_COLOR_KEEP:
-                self.images_to_keep.append(abspath_image)
                 self.images_gallery_to_keep.add_image(temp)
+                self.summary_details_images_to_keep_lav.set_value(
+                    len(self.images_gallery_to_keep.images)
+                )
             elif temp.highlight_color == IMAGE_FG_COLOR_DELETE:
-                self.images_to_dump.append(abspath_image)
                 self.images_gallery_to_dump.add_image(temp)
+                self.summary_details_images_to_dump_lav.set_value(
+                    len(self.images_gallery_to_dump.images)
+                )
+            elif temp.highlight_color == IMAGE_FG_COLOR_DEFAULT:
+                self.unmarked_images.append(abspath_image)
+                self.summary_details_unmarked_images.set_value(
+                    len(self.unmarked_images)
+                )
 
 
 class StartScreen(ctk.CTkFrame):
