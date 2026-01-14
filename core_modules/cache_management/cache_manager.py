@@ -188,6 +188,13 @@ class ImageItemCacheHandler:
             else None
         )
 
+    def getAbspathOfCurrent(self) -> str | None:
+        print("Getting abspath of current")
+        if self.index_curr_ref is None:
+            print("Error: Index curr ref is None")
+            return None
+        return self.getAbspathAtIndex(self.index_curr_ref)
+
     def hasRightReachedWindowEdge(self) -> bool:
         return self.size_right >= CACHE_HANDLER_WINDOW_SIZE
 

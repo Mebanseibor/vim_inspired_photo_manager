@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from threading import Event, Thread
 from tkinter import IntVar, filedialog
 from typing import Any, Callable
@@ -271,7 +272,8 @@ class StartScreen(ctk.CTkFrame):
     def __init__(
         self,
         parent: MainApp,
-        directory: str,
+        directory_jpeg: str,
+        directory_raw: str,
         filepaths: dict[str, list[str]],
         **kwargs,
     ):
@@ -281,7 +283,9 @@ class StartScreen(ctk.CTkFrame):
 
         self.is_keymap_picture_actions_ready = False
 
-        self.directory = directory
+        self.directory_jpeg = directory_jpeg
+        self.directory_raw = directory_raw
+
         self.filepaths = filepaths
         self.filepaths_images_size = len(filepaths.get(fsM.IMAGES_ONLY_KEY, []))
 
@@ -305,7 +309,7 @@ class StartScreen(ctk.CTkFrame):
         self.location_frame.grid_columnconfigure(1, weight=1)
         self.location_frame.pack(fill=ctk.X)
 
-        self.currect_abs_path_l = ctk.CTkLabel(self.location_frame, text=directory)
+        self.currect_abs_path_l = ctk.CTkLabel(self.location_frame, text=directory_jpeg)
         self.file_l = ctk.CTkLabel(
             self.location_frame, text=f"Number of images = {self.filepaths_images_size}"
         )
@@ -410,6 +414,18 @@ class StartScreen(ctk.CTkFrame):
 
         updateFG(self.image_highlight_l, fg_color)
 
+    def on_open_image(self, event, abspath: str | None):
+        if abspath is None:
+            print("Cannot open image: Abspath was None")
+            return
+        os.startfile(abspath)
+
+    def on_open_image_in_fs(self, event, abspath: str | None):
+        if abspath is None:
+            print("Cannot open image in File System: Abspath was None")
+            return
+        subprocess.run(["explorer", "/select,", abspath])
+
     def any_key(self, event):
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
         self.command_l.configure(text=event.keysym)
@@ -453,7 +469,7 @@ class StartScreen(ctk.CTkFrame):
             return
         self.file_l.configure(text=os.path.basename(curr.image_item.fs_item.fullName()))
         cM.initCachingForDirectory(
-            self.directory, self.app.live_event, self.start_screen_event
+            self.directory_jpeg, self.app.live_event, self.start_screen_event
         )
         self.loadImageFromCacheHandler()
         self.is_keymap_picture_actions_ready = True
@@ -473,6 +489,19 @@ class StartScreen(ctk.CTkFrame):
         self.app.bind_key("k", self.on_keep)
         self.app.bind_key("c", self.on_clear)
         self.app.bind_key("m", self.on_review)
+        self.app.bind_key(
+            "o",
+            lambda event: self.on_open_image(
+                event, self.cacheHandler.getAbspathOfCurrent()
+            ),
+        )
+
+        self.app.bind_key(
+            "e",
+            lambda event: self.on_open_image_in_fs(
+                event, self.cacheHandler.getAbspathOfCurrent()
+            ),
+        )
 
         # navigation
         self.app.bind_key("l", self.on_next)
@@ -521,20 +550,27 @@ class MainApp(ctk.CTk):
         return
 
     def start(self):
-        if sh.BASE_ABS_PATH is None:
-            print("Directory was null")
+        if not self.home_screen.are_directories_and_filepaths_valid():
+            print("Directories or filepaths were not valid")
             return
 
-        if sh.BASE_FILEPATHS is None:
-            print("Filepaths was null")
-            return
+        filepaths = {
+            fsM.IMAGES_ONLY_KEY: self.home_screen.directory_prompt_jpeg.filepaths[
+                fsM.IMAGES_ONLY_KEY
+            ],
+            fsM.RAWS_ONLY_KEY: self.home_screen.directory_prompt_raw.filepaths[
+                fsM.RAWS_ONLY_KEY
+            ],
+        }
 
         self.start_screen = StartScreen(
-            self, directory=sh.BASE_ABS_PATH, filepaths=sh.BASE_FILEPATHS
+            self,
+            directory_jpeg=self.home_screen.directory_prompt_jpeg.directory,
+            directory_raw=self.home_screen.directory_prompt_raw.directory,
+            filepaths=filepaths,
         )
-
-        self.show_start_screen()
         self.after_idle(self.start_screen.init)
+        self.show_start_screen()
 
     def show_start_screen(self) -> bool:
         self.home_screen.pack_forget()
@@ -580,14 +616,16 @@ class DirectoryPromptItem(ctk.CTkFrame):
         self,
         parent: Any,
         title: str,
+        file_formats: dict[str, bool],
         on_success_event: Callable[[], None] | None = None,
         on_failure_event: Callable[[], None] | None = None,
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
         self.title: str = title
-        self.directory: str = ""
-        self.selfpaths: dict[str, list[str]] = {}
+        self.file_formats = file_formats
+        self.directory: str | None = None
+        self.filepaths: dict[str, list[str]] | None = None
 
         self.btn_directory = ctk.CTkButton(
             self, text=self.title, command=self.select_directory
@@ -600,48 +638,54 @@ class DirectoryPromptItem(ctk.CTkFrame):
         self.on_success_event: Callable[[], None] | None = on_success_event
         self.on_failure_event: Callable[[], None] | None = on_failure_event
 
-    def select_directory(self):
-        directory = filedialog.askdirectory(title=self.title, parent=self)
+    def select_directory(self, directory: str | None = None) -> bool:
+        if directory is None:
+            selected_directory = filedialog.askdirectory(title=self.title, parent=self)
+            if not selected_directory:
+                return False
+        else:
+            selected_directory = directory
 
-        if not directory:
-            return
+        self.directory = None
+        self.filepaths = None
+        self.btn_directory.configure(text=selected_directory)
 
-        sh.BASE_ABS_PATH = None
-        sh.BASE_FILEPATHS = None
-
-        if not fsM.isDirValid(directory):
+        if not fsM.isDirValid(selected_directory):
             self._set_result_text("Invalid directory")
-            self.btn_directory.configure(text=self.directory)
             self._failure()
-            return
+            return False
 
-        self.directory = directory
+        self.directory = selected_directory
 
-        self.btn_directory.configure(text=self.directory)
-        self.filepaths = fsM.getFilePathsAtAbspathForFormats(
-            self.directory,
-            file_formats={fsM.IMAGES_ONLY_KEY: True, fsM.RAWS_ONLY_KEY: True},
+        filepaths: dict[str, list[str]] | None = fsM.getFilePathsAtAbspathForFormats(
+            self.directory, self.file_formats
         )
 
-        if self.filepaths is None:
+        if filepaths is None:
             self._set_result_text("Can't get filepaths at {self.directory}")
             self.btn_directory.configure(text=self.directory)
             self._failure()
-            return
+            return False
 
-        if len(self.filepaths[fsM.IMAGES_ONLY_KEY]) == 0:
+        contains_images: bool = False
+        for file_format in self.file_formats:
+            if len(filepaths[file_format]) != 0:
+                contains_images = True
+                break
+        if not contains_images:
             self._set_result_text("No images was found")
             self.btn_directory.configure(text=self.directory)
             self._failure()
-            return
+            return False
 
-        sh.BASE_FILEPATHS = self.filepaths
+        self.filepaths = filepaths
 
-        sh.BASE_ABS_PATH = self.directory
         self.result_l.pack_forget()
         self._success()
+        return True
 
     def _set_result_text(self, text: str):
+        print(text)
         if not self.result_l.winfo_ismapped():
             self.result_l.pack()
         self.result_l.configure(text=text)
@@ -671,19 +715,25 @@ class HomeScreen(ctk.CTkFrame):
         self.directory_prompt_jpeg: DirectoryPromptItem = DirectoryPromptItem(
             self,
             title="Choose pictures directory/folder",
-            on_success_event=lambda: self.show_raw_directories_checkbox(),
-            on_failure_event=lambda: self.hide_raw_directories_checkbox(),
+            file_formats={fsM.IMAGES_ONLY_KEY: True},
+            on_success_event=lambda: self.on_success_directory_prompt_jpeg(),
+            on_failure_event=lambda: self.on_failure_directory_prompt_jpeg(),
         )
         self.directory_prompt_jpeg.pack()
 
+        self.raw_directory_container: ctk.CTkFrame = ctk.CTkFrame(self)
+
         self.directory_prompt_raw: DirectoryPromptItem = DirectoryPromptItem(
-            self,
+            self.raw_directory_container,
+            file_formats={fsM.RAWS_ONLY_KEY: True},
             title="Choose RAW directory/folder",
+            on_success_event=lambda: self.on_success_directory_prompt_raw(),
+            on_failure_event=lambda: self.on_failure_directory_prompt_raw(),
         )
 
         self.directory_raw_in_same_directory_result: IntVar = IntVar(value=1)
         self.directory_raw_in_same_directory = ctk.CTkCheckBox(
-            self,
+            self.raw_directory_container,
             text="RAW files exists in the same folder",
             variable=self.directory_raw_in_same_directory_result,
             command=self.on_directory_raw_in_same_directory_change,
@@ -703,45 +753,87 @@ class HomeScreen(ctk.CTkFrame):
         )
         self.btn_start.grid(row=0, column=0, ipadx=40, ipady=12)
 
-        self.log_label = ctk.CTkLabel(self, text="", text_color="red")
-        self.log_label.pack(after=self.container)
+        self.log_label = ctk.CTkLabel(self.container, text="", text_color="red")
 
     def start(self):
-        if sh.BASE_ABS_PATH is None:
-            self.set_log("Base directory was not set")
+        if not self.are_directories_and_filepaths_valid():
             return
+
         self.set_log("")
         self.app.start()
         self.pack_forget()
 
     def set_log(self, text: str):
+        print(text)
         self.after_idle(lambda: self.log_label.configure(text=text))
-
-    def select_directory(self):
-        self.directory_prompt_jpeg.select_directory()
+        if not text:
+            self.log_label.pack_forget()
+        else:
+            self.log_label.grid(row=1, column=0, ipadx=40, ipady=12)
 
     def init_keymaps(self):
         # escape keys
-        self.app.bind("<Escape>", self.app.on_app_close)
-        self.app.bind("q", self.app.on_app_close)
+        self.app.bind_key("<Escape>", self.app.on_app_close)
+        self.app.bind_key("q", self.app.on_app_close)
 
         # actions
-        self.app.bind("<Control-o>", lambda event: self.select_directory())
-        self.app.bind("<Control-Return>", lambda event: self.start())
-
-    def show_raw_directories_checkbox(self):
-        self.directory_raw_in_same_directory.pack(
-            after=self.directory_prompt_jpeg, pady=(10, 0)
+        self.app.bind_key(
+            "<Control-o>", lambda event: self.directory_prompt_jpeg.select_directory()
         )
+        self.app.bind_key("<Control-Return>", lambda event: self.start())
 
-    def hide_raw_directories_checkbox(self):
+    def on_success_directory_prompt_jpeg(self):
+        self.raw_directory_container.pack(after=self.directory_prompt_jpeg)
+        self.directory_raw_in_same_directory.pack(pady=(10, 0))
+
+    def on_failure_directory_prompt_jpeg(self):
         self.directory_raw_in_same_directory.pack_forget()
+        self.raw_directory_container.pack_forget()
+
+    def on_success_directory_prompt_raw(self):
+        pass
+
+    def on_failure_directory_prompt_raw(self):
+        pass
 
     def on_directory_raw_in_same_directory_change(self):
-        if self.directory_raw_in_same_directory_result.get():
+        if self.expect_raws_in_same_directory_as_jpeg():
             self.directory_prompt_raw.pack_forget()
             return
         self.directory_prompt_raw.pack(after=self.directory_raw_in_same_directory)
+
+    def are_directories_and_filepaths_valid(self) -> bool:
+        if self.directory_prompt_jpeg.directory is None:
+            self.set_log("Directory for JPEG's files was null")
+            return False
+
+        if self.directory_prompt_jpeg.filepaths is None:
+            self.set_log("Filepaths for JPEG's files was null")
+            return False
+
+        if self.expect_raws_in_same_directory_as_jpeg():
+            if self.directory_prompt_raw.select_directory(
+                self.directory_prompt_jpeg.directory
+            ):
+                return True
+
+            self.set_log("Directory for raw files was invalid")
+            return False
+
+        if self.directory_prompt_raw.directory is None:
+            self.set_log("Directory for raw files was null")
+            return False
+
+        if self.directory_prompt_raw.filepaths is None:
+            self.set_log("Filepaths for raw files was null")
+            return False
+
+        self.set_log("")
+
+        return True
+
+    def expect_raws_in_same_directory_as_jpeg(self) -> bool:
+        return self.directory_raw_in_same_directory_result.get() == 1
 
 
 class FSItemGUIHandler:
