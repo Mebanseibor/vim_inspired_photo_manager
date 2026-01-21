@@ -227,8 +227,11 @@ class ImageItemCacheHandler:
         if trim_size:
             self.size_right -= 1
 
-    def getFileNameFromCurr(self) -> str:
+    def getFileFullNameFromCurr(self) -> str:
         return self.curr.image_item.fs_item.fullName() if self.curr else ""
+
+    def getFileNameOnlyFromCurr(self) -> str:
+        return self.curr.image_item.fs_item.getNameOnly() if self.curr else ""
 
     def updateHighlightColor(self, fg_color: int) -> bool:
         if not self.curr:
@@ -305,7 +308,7 @@ def initCachingForDirectory(abspath_dir: str, gui_event: t.Event, start_event: t
 
         for filepath in filepaths:
             abspath = os.path.abspath(os.path.join(abspath_dir, filepath))
-            if fsM.isAbspathOfFileTypes(abspath, fsM.IMAGE_EXTENSIONS):
+            if fsM.isFileOfFileTypes_fromAbspath(abspath, fsM.IMAGE_EXTENSIONS):
                 abspaths.append(abspath)
 
         sem = t.Semaphore(2)

@@ -8,6 +8,40 @@ IMAGES_ONLY_KEY = "images_only"
 RAWS_ONLY_KEY = "raw_files_only"
 
 
+class SelectionFromDirectory:
+    def __init__(self, abspath_dir: str, file_formats: list[str]):
+        if not os.path.exists(abspath_dir):
+            print(f"Error: Path {abspath_dir} does not exist")
+            return
+        self.abspath_dir: str = abspath_dir
+        self.file_formats: list[str] = file_formats
+        self.abspath_files: list[str] | None = self.get_files()
+
+    def get_files(self) -> list[str] | None:
+        if not os.path.exists(self.abspath_dir):
+            print(f"Invalid operation: Path {self.abspath_dir} does not exist")
+            return None
+
+        self.abspath_files = []
+
+        for filepath in os.listdir(self.abspath_dir):
+            abspath_file = os.path.abspath(os.path.join(self.abspath_dir, filepath))
+            if isFileOfFileTypes_fromAbspath(abspath_file, self.file_formats):
+                self.abspath_files.append(abspath_file)
+
+        return self.abspath_files
+
+    def is_file_in_list_by_filename(self, filename: str) -> bool:
+        if self.abspath_files is None:
+            print("Error: filepaths are not set yet")
+            return False
+
+        for abspath_file in self.abspath_files:
+            if os.path.basename(abspath_file) == filename:
+                return True
+        return False
+
+
 class FileSystemItem:
     def __init__(self, abspath: str):
         self.abspath: str = abspath
@@ -45,6 +79,9 @@ class FileSystemItem:
         name = self.name if self.name else ""
         ext = f".{self.extension}" if self.extension else ""
         return name + ext
+
+    def getNameOnly(self):
+        return self.name if self.name else ""
 
     def is_image(self) -> bool:
         if not self.is_file:
@@ -120,43 +157,7 @@ def getFullNameFromAbspath(
     return name + (extension.lower() if lowercase_extension else extension)
 
 
-def getFilePathsAtAbspathForFormats(
-    abspath_dir: str,
-    file_formats: dict[str, bool],
-) -> dict[str, list[str]] | None:
-    if not os.path.exists(abspath_dir) or not os.path.isdir(abspath_dir):
-        return None
-
-    file_paths = os.listdir(abspath_dir)
-
-    abspath_files = []
-    for file_path in file_paths:
-        abspath_files.append(os.path.abspath(os.path.join(abspath_dir, file_path)))
-
-    result = {}
-
-    abspath_files_raws_only = []
-    abspath_files_images_only = []
-
-    for file_path in abspath_files:
-        abspath_file = os.path.abspath(os.path.join(abspath_dir, file_path))
-
-        if file_formats.get(RAWS_ONLY_KEY) and isAbspathOfFileTypes(
-            abspath_file, RAW_EXTENSIONS
-        ):
-            abspath_files_raws_only.append(abspath_file)
-        if file_formats.get(IMAGES_ONLY_KEY) and isAbspathOfFileTypes(
-            abspath_file, IMAGE_EXTENSIONS
-        ):
-            abspath_files_images_only.append(abspath_file)
-
-    result[IMAGES_ONLY_KEY] = abspath_files_images_only
-    result[RAWS_ONLY_KEY] = abspath_files_raws_only
-
-    return result
-
-
-def isAbspathOfFileTypes(abspath: str, file_types: list[str]) -> bool | None:
+def isFileOfFileTypes_fromAbspath(abspath: str, file_types: list[str]) -> bool | None:
     if not os.path.exists(abspath):
         return None
 
