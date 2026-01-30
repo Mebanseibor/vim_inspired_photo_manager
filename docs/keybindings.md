@@ -26,6 +26,17 @@
 
 ### Summary Page
 
-| Key      | Action            |
-| -------- | ----------------- |
-| q or Esc | Quit to Main Page |
+#### Main actions
+
+| Key        | Action                       |
+| ---------- | ---------------------------- |
+| q or Esc   | Quit to Main Page            |
+| ctrl+enter | Enter into confirmation mode |
+
+##### Confirmation prompt
+
+| Key             | Action         |
+| --------------- | -------------- |
+| q or Esc        | Close prompt   |
+| n               | Do not proceed |
+| y or ctrl+enter | Proceed        |

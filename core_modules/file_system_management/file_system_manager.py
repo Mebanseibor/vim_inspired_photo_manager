@@ -31,20 +31,19 @@ class SelectionFromDirectory:
 
         return self.abspath_files
 
-    def is_file_in_list_by_filename(self, filename: str) -> bool:
+    def is_file_in_list_by_filename(self, filename: str) -> str | None:
         if self.abspath_files is None:
             print("Error: filepaths are not set yet")
-            return False
+            return None
 
         for abspath_file in self.abspath_files:
             if os.path.basename(abspath_file) == filename:
-                return True
-        return False
+                return abspath_file
+        return None
 
 
 class FileSystemItem:
     def __init__(self, abspath: str):
-        self.abspath: str = abspath
         self.is_file: bool | None = os.path.isfile(abspath)
         if self.is_file:
             split_name = os.path.basename(abspath).rsplit(".")
@@ -73,7 +72,6 @@ class FileSystemItem:
         print(f"name:\t\t{self.name}")
         print(f"extension:\t{self.extension}")
         print(f"file_hash:\t{self.file_hash}")
-        print(f"abs_path:\t{self.abspath}")
 
     def fullName(self):
         name = self.name if self.name else ""
@@ -100,6 +98,23 @@ class FileSystemItem:
             return False
 
         return self.extension in RAW_EXTENSIONS
+
+
+class FileName:
+    def __init__(self, name: str | None, extension: str | None):
+        self.name: str | None = name
+        self.extension: str | None = extension
+
+    def getName(self) -> str:
+        return self.name if self.name else ""
+
+    def getExtension(self) -> str:
+        return self.extension if self.extension else ""
+
+    def getFullName(self, force_lowercase_extension: bool = False) -> str:
+        extension = f".{self.getExtension()}" if self.getExtension() else ""
+        extension = extension.lower() if force_lowercase_extension else extension
+        return self.getName() + (extension)
 
 
 def hashFile(abspath_file: str, salt: str):
@@ -183,4 +198,39 @@ def isDirValid(abspath: str) -> bool:
         print(f"Path is not a directory: {abspath}\n")
         return False
 
+    return True
+
+
+def getPartsOfNameFromAbsPath(abspath: str) -> FileName | None:
+    if not os.path.exists(abspath):
+        print("Error: Not a valid path")
+        return None
+
+    if not os.path.isfile(abspath):
+        print("Error: Not a file name")
+        return None
+
+    split_name = os.path.basename(abspath).rsplit(".")
+    name = (
+        None
+        if split_name[0] == ""
+        else split_name[0]
+        if len(split_name) == 1
+        else ".".join(split_name[0:-1])
+    )
+    extension = None if len(split_name) == 1 else split_name[-1]
+
+    return FileName(name, extension)
+
+
+def deleteFileFromAbsPath(abspath: str) -> bool:
+    if not os.path.exists(abspath):
+        print(f"Error: Not a valid path:\t{abspath}")
+        return False
+
+    if not os.path.isfile(abspath):
+        print(f"Error: Not a file name:\t{abspath}")
+        return False
+
+    os.remove(abspath)
     return True

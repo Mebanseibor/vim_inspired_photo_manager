@@ -4,7 +4,7 @@
 
 ## Features
 
-- Displaying images
+- Displaying and deleting the intended images
 
 - Visually see the intended action for the image:
   - Actions:
@@ -50,5 +50,4 @@
 
 ## Planned future features
 
-- Deleting intended images
-- Displaying RAW files
+- Displaying RAW files, when only RAW files were shot

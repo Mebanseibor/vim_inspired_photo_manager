@@ -109,8 +109,8 @@ class ImageGallery(ctk.CTkFrame):
         self.update_title_total_images()
         self.update_idletasks()
 
-    def add_image(self, image: FSItemGUIHandler):
-        self.images.append(image.fs_item.abspath)
+    def add_image(self, abspath_image: str, image: FSItemGUIHandler):
+        self.images.append(abspath_image)
 
         self.update_title_total_images()
 
@@ -158,17 +158,111 @@ class ImageGallery(ctk.CTkFrame):
         self.update_idletasks()
 
 
+class MainPopup(ctk.CTkFrame):
+    def __init__(
+        self,
+        parent: MainApp,
+        name: str = "",
+        **kwargs,
+    ):
+        super().__init__(parent, corner_radius=16, **kwargs)
+        self.app = parent
+        self.name: str = name
+
+        self.title: ctk.CTkLabel = ctk.CTkLabel(self, text=self.name)
+        self.title.pack(fill=ctk.BOTH)
+
+        self.on_close_actions: Callable[[], None] | None = None
+
+    def set_on_close_action(self, action: Callable[[], None]):
+        self.on_close_actions: Callable[[], None] | None = action
+
+    def open(self):
+        print(f"Showing popup\t{self.name}")
+        self.place(
+            relx=0.25,
+            rely=0.25,
+            relwidth=0.5,
+            relheight=0.5,
+        )
+        self.is_shown = True
+
+    def close(self):
+        self.place_forget()
+        self.is_shown = False
+        self._on_close_actions()
+
+    def _on_close_actions(self):
+        if self.on_close_actions:
+            self.on_close_actions()
+
+
+class PositiveNegativePopup(MainPopup):
+    def __init__(
+        self,
+        parent: MainApp,
+        window_title: str,
+        title: str,
+        positiveText: str,
+        negativeText: str,
+        on_positive_action: Callable[[], None],
+        on_negative_action: Callable[[], None],
+        **kwargs,
+    ):
+        super().__init__(parent, name=window_title, **kwargs)
+
+        self.prompt_container: ctk.CTkFrame = ctk.CTkFrame(self, fg_color="gray")
+        self.prompt_container.grid_columnconfigure(index=[0, 1], weight=1)
+        self.prompt_container.pack(expand=True, fill=ctk.BOTH)
+
+        self.prompt_title: ctk.CTkLabel = ctk.CTkLabel(
+            self.prompt_container, text=title
+        )
+        self.prompt_title.grid(row=0, column=0, columnspan=2)
+
+        self.prompt_negative: ctk.CTkButton = ctk.CTkButton(
+            self.prompt_container, text=negativeText, fg_color="#444444"
+        )
+        self.prompt_negative.grid(row=1, column=0)
+
+        self.prompt_positive: ctk.CTkButton = ctk.CTkButton(
+            self.prompt_container, text=positiveText
+        )
+        self.prompt_positive.grid(row=1, column=1)
+
+        self._positive_action: Callable[[], None] = on_positive_action
+        self._negative_action: Callable[[], None] = on_negative_action
+
+        self.app.replace_keymaps(self.init_keymaps)
+
+    def _positive(self):
+        if self._positive_action:
+            self._positive_action()
+        self.close()
+
+    def _negative(self):
+        if self._negative_action:
+            self._negative_action()
+        self.close()
+
+    def init_keymaps(self):
+        self.app.bind_key("q", lambda event: self.close())
+        self.app.bind_key("<Escape>", lambda event: self.close())
+        self.app.bind_key("n", lambda event: self._negative())
+        self.app.bind_key("y", lambda event: self._positive())
+        self.app.bind_key("<Control-Return>", lambda event: self._positive())
+
+
 class SummaryScreen(ctk.CTkFrame):
     def __init__(
         self,
         parent: Any,
         start_screen: StartScreen,
-        filepaths: list[str],
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
         self.start_screen: StartScreen = start_screen
-        self.filepaths = filepaths
+        self._filtering_by_intended_action_completed: bool = True
 
         # refreshing the list
         self.refresh_event: Event = Event()
@@ -184,10 +278,30 @@ class SummaryScreen(ctk.CTkFrame):
         self.details_container: ctk.CTkFrame = ctk.CTkFrame(self)
         self.details_container.pack(fill=ctk.X, padx=4)
 
+        self.summary_details_jpeg_directory: LabelAndValue = LabelAndValue(
+            self.details_container,
+            "JPEG Directory:",
+            self.start_screen.selection_jpeg.abspath_dir,
+        )
+        self.summary_details_jpeg_directory.pack(fill=ctk.X)
+
+        raw_directory_path: str = (
+            self.start_screen.selection_raw.abspath_dir
+            if self.start_screen.selection_raw
+            else "Not selected"
+        )
+        self.summary_details_raw_directory: LabelAndValue = LabelAndValue(
+            self.details_container,
+            "RAW Directory:",
+            raw_directory_path,
+        )
+        self.summary_details_raw_directory.pack(fill=ctk.X)
+
+        self.manage_raws: bool = start_screen.selection_raw is not None
         self.summary_details_manage_raws: LabelAndValue = LabelAndValue(
             self.details_container,
             "Manage RAWs:",
-            str(self.start_screen.selection_raw is not None),
+            str(self.manage_raws),
         )
         self.summary_details_manage_raws.pack(fill=ctk.X)
 
@@ -226,6 +340,9 @@ class SummaryScreen(ctk.CTkFrame):
             COLORS[IMAGE_FG_COLOR_DELETE],
             image_size=self.image_size,
         )
+
+        self.completion_pop_up: PositiveNegativePopup | None = None
+
         self.update_idletasks()
 
     def on_summary_screen_close(self, event):
@@ -237,8 +354,130 @@ class SummaryScreen(ctk.CTkFrame):
     def init_keymaps(self):
         self.start_screen.app.bind_key("<Escape>", self.on_summary_screen_close)
         self.start_screen.app.bind_key("q", self.on_summary_screen_close)
+        self.start_screen.app.bind_key("<Control-Return>", self.prompt_for_completion)
+
+    def prompt_for_completion(self, event):
+        if not self._is_filtering_by_intended_action_completed():
+            print(
+                "Cannot prompt for completion: Filteting by intended action is not completed yet"
+            )
+            return
+
+        if self.completion_pop_up:
+            print("A completion pop up already exist")
+            return
+
+        def on_close():
+            print("Close")
+            self.start_screen.app.replace_keymaps(self.init_keymaps)
+            self.completion_pop_up = None
+
+        def on_cancel():
+            print("Cancel")
+            on_close()
+
+        def on_proceed():
+            print("Proceed")
+
+            self.start_screen.app.replace_keymaps(
+                lambda: print("Removing keymaps due to processing of prompt completion")
+            )
+            print(f"Manage RAWs: {self.manage_raws}")
+
+            print("JPEG to keep:")
+            for image in self.images_gallery_to_keep.images:
+                print(image)
+
+            print("JPEG to dump:")
+            for image in self.images_gallery_to_dump.images:
+                print(image)
+                get_jpeg_filename_result: fsM.FileName | None = (
+                    fsM.getPartsOfNameFromAbsPath(image)
+                )
+
+                if get_jpeg_filename_result is None:
+                    print("Error: Getting filename for jpeg unexpectedly returned None")
+                    continue
+
+                jpeg_filename: fsM.FileName = get_jpeg_filename_result
+                image_hash = fsM.hashFile(
+                    image, jpeg_filename.getFullName(force_lowercase_extension=True)
+                )
+                print(jpeg_filename.getFullName())
+
+                def deleteJPEG() -> bool:
+                    if not fsM.deleteFileFromAbsPath(image):
+                        print(f"Error: Cannot delete jpeg: \t{image}")
+                        return False
+                    return True
+
+                def deleteHashFile() -> bool:
+                    abspath_cachefile = os.path.abspath(
+                        os.path.join(cM.CACHE_FOLDER, image_hash)
+                    )
+                    print(abspath_cachefile)
+
+                    if not fsM.deleteFileFromAbsPath(abspath_cachefile):
+                        print(f"Error: Cannot delete hashfile: \t{abspath_cachefile}")
+                        return False
+
+                    return True
+
+                def deleteRaw(selection_raw: fsM.SelectionFromDirectory) -> bool:
+                    raw_filename: str = jpeg_filename.getName() + ".ARW"
+
+                    abspath_actual_raw_file: str | None = (
+                        selection_raw.is_file_in_list_by_filename(raw_filename)
+                    )
+                    if abspath_actual_raw_file is None:
+                        print(
+                            f"Did not find any matching raw file:\t{raw_filename} for image {image}"
+                        )
+                        return False
+
+                    print(f"Found matching raw file:\t{raw_filename} for image {image}")
+
+                    if not fsM.deleteFileFromAbsPath(abspath_actual_raw_file):
+                        print(
+                            f"Error: Cannot delete raw file: \t{abspath_actual_raw_file}"
+                        )
+                        return False
+
+                    return True
+
+                if not deleteJPEG():
+                    continue
+
+                if not deleteHashFile():
+                    continue
+
+                if self.manage_raws:
+                    if self.start_screen.selection_raw is None:
+                        print(
+                            "Error: self.start_screen.selection_raw is unexpectedly None"
+                        )
+                        break
+                    if not deleteRaw(self.start_screen.selection_raw):
+                        continue
+
+            on_close()
+            self.after_idle(self.start_screen.app.reset)
+
+        self.completion_pop_up = PositiveNegativePopup(
+            self.start_screen.app,
+            "Completion Pop Up",
+            "Perform intended actions?",
+            "Yes",
+            "No",
+            on_proceed,
+            on_cancel,
+        )
+        self.completion_pop_up.set_on_close_action(on_close)
+        self.completion_pop_up.open()
 
     def refresh_list(self):
+        self._filtering_by_intended_action_completed = False
+
         self.refresh_event.set()
         self.refresh_event = Event()
 
@@ -251,7 +490,7 @@ class SummaryScreen(ctk.CTkFrame):
 
         self.update_idletasks()
 
-        for abspath_image in self.filepaths:
+        for abspath_image in self.start_screen.filepaths:
             if self.refresh_event.is_set():
                 return
             temp: FSItemGUIHandler | None = cM.cacheImageAtAbspathIfNotCached(
@@ -260,12 +499,12 @@ class SummaryScreen(ctk.CTkFrame):
             if not temp:
                 return
             if temp.highlight_color == IMAGE_FG_COLOR_KEEP:
-                self.images_gallery_to_keep.add_image(temp)
+                self.images_gallery_to_keep.add_image(abspath_image, temp)
                 self.summary_details_images_to_keep_lav.set_value(
                     len(self.images_gallery_to_keep.images)
                 )
             elif temp.highlight_color == IMAGE_FG_COLOR_DELETE:
-                self.images_gallery_to_dump.add_image(temp)
+                self.images_gallery_to_dump.add_image(abspath_image, temp)
                 self.summary_details_images_to_dump_lav.set_value(
                     len(self.images_gallery_to_dump.images)
                 )
@@ -274,6 +513,11 @@ class SummaryScreen(ctk.CTkFrame):
                 self.summary_details_unmarked_images.set_value(
                     len(self.unmarked_images)
                 )
+
+        self._filtering_by_intended_action_completed = True
+
+    def _is_filtering_by_intended_action_completed(self) -> bool:
+        return self._filtering_by_intended_action_completed
 
 
 class StartScreen(ctk.CTkFrame):
@@ -310,9 +554,7 @@ class StartScreen(ctk.CTkFrame):
         self.pages.append(self.summary_page)
 
         self.load_page(self.main_page)
-        self.summary_screen = SummaryScreen(
-            self.summary_page, self, filepaths=self.filepaths
-        )
+        self.summary_screen = SummaryScreen(self.summary_page, self)
         self.summary_screen.pack(expand=True, fill=ctk.BOTH)
 
         # location section
@@ -472,16 +714,15 @@ class StartScreen(ctk.CTkFrame):
             return False
         updateFG(self.image_highlight_l, highlight_color)
 
-        filename: str = self.cacheHandler.getFileNameOnlyFromCurr() + ".ARW"
         if self.selection_raw:
+            filename: str = self.cacheHandler.getFileNameOnlyFromCurr() + ".ARW"
             if self.selection_raw.is_file_in_list_by_filename(filename):
                 self.raw_file_indicator.place_forget()
             else:
-                if self.selection_raw:
-                    self.raw_file_indicator.place(relwidth=0.10, relheight=0.05)
-                self.raw_file_indicator.configure(
-                    fg_color="red", text="No RAW file Found"
-                )
+                self.raw_file_indicator.place(relwidth=0.15, relheight=0.05)
+            self.raw_file_indicator.configure(
+                fg_color="red", text="Found no matching RAW file"
+            )
 
         return True
 
@@ -572,13 +813,30 @@ class MainApp(ctk.CTk):
 
         self.bounded_keys: dict[str, Any] = {}
 
-        self.home_screen: HomeScreen = HomeScreen(self)
+        self.home_screen: HomeScreen | None = None
         self.start_screen: StartScreen | None = None
 
+        self.reset()
+
+    def reset(self):
+        print("\n\n\t\t------------- RESETTING -------------\n\n")
+        self.clear_keymaps()
+
+        if self.home_screen:
+            self.home_screen.destroy()
+        self.home_screen = HomeScreen(self)
+
+        if self.start_screen:
+            self.start_screen.destroy()
+        self.start_screen = None
+
         self.show_home_screen()
-        return
 
     def start(self):
+        if self.home_screen is None:
+            print("Error: Cannot start, home_screen was unexpectedly None")
+            return
+
         if not self.home_screen.are_directories_and_filepaths_valid():
             print("Directories or filepaths were not valid")
             return
@@ -596,6 +854,10 @@ class MainApp(ctk.CTk):
         self.show_start_screen()
 
     def show_start_screen(self) -> bool:
+        if self.home_screen is None:
+            print("Error: Cannot show start screen, home_screen was unexpectedly None")
+            return False
+
         self.home_screen.pack_forget()
 
         if not self.start_screen:
@@ -610,6 +872,10 @@ class MainApp(ctk.CTk):
         if self.start_screen:
             self.start_screen.pack_forget()
 
+        if self.home_screen is None:
+            print("Error: Cannot show home screen, home_screen was unexpectedly None")
+            return
+
         self.home_screen.pack(expand=True, fill=ctk.BOTH)
 
         self.replace_keymaps(self.home_screen.init_keymaps)
@@ -619,12 +885,14 @@ class MainApp(ctk.CTk):
 
     def clear_keymaps(self):
         for key in self.bounded_keys:
+            print(f"Unbinding:\t{key}\t{self.bounded_keys.get(key)}")
             self.unbind(key)
 
-        self.bounded_keys: dict[str, Any] = {}
+        self.bounded_keys = {}
 
     def replace_keymaps(self, keymaps_func):
         self.clear_keymaps()
+        print(f"Replacing with keymaps:\t{keymaps_func}")
         keymaps_func()
 
     def bind_key(self, key: str, function):
@@ -632,6 +900,7 @@ class MainApp(ctk.CTk):
             self.unbind(key)
         self.bind(key, function)
         self.bounded_keys[key] = function
+        print(f"Binding:\t{key}\t{function}")
 
 
 class DirectoryPromptItem(ctk.CTkFrame):
@@ -705,11 +974,11 @@ class DirectoryPromptItem(ctk.CTkFrame):
             self.result_l.pack()
         self.result_l.configure(text=text)
 
-    def _success(self) -> None:
+    def _success(self):
         if self.on_success_event:
             self.on_success_event()
 
-    def _failure(self) -> None:
+    def _failure(self):
         if self.on_failure_event:
             self.on_failure_event()
 
@@ -844,6 +1113,10 @@ class HomeScreen(ctk.CTkFrame):
             self.set_log("Directory for JPEG's selection was null")
             return False
 
+        if not self.directory_prompt_jpeg.selection.abspath_files:
+            self.set_log("No jpeg files in the selected directory")
+            return False
+
         if not self.expect_manage_raws():
             self.directory_prompt_raw.selection = None
             return True
@@ -861,6 +1134,10 @@ class HomeScreen(ctk.CTkFrame):
             self.set_log(
                 "Error: Raw selection was unexpectedly Null\nYou may have not set the RAW directory yet"
             )
+            return False
+
+        if not self.directory_prompt_raw.selection.abspath_files:
+            self.set_log("No raw files in the selected directory")
             return False
 
         self.set_log("")
