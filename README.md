@@ -50,4 +50,5 @@
 
 ## Planned future features
 
+- Help menu
 - Displaying RAW files, when only RAW files were shot

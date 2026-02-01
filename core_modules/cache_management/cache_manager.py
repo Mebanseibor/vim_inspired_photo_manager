@@ -233,7 +233,7 @@ class ImageItemCacheHandler:
     def getFileNameOnlyFromCurr(self) -> str:
         return self.curr.image_item.fs_item.getNameOnly() if self.curr else ""
 
-    def updateHighlightColor(self, fg_color: int) -> bool:
+    def updateHighlightColor(self, fg_color: str) -> bool:
         if not self.curr:
             print("Curr was unexpected Null")
             return False
@@ -250,7 +250,7 @@ class ImageItemCacheHandler:
 
         return self.curr.image_item.image
 
-    def getHighlightColor(self) -> int | None:
+    def getHighlightColor(self) -> str | None:
         if not self.curr:
             print("Curr was unexpected Null")
             return None

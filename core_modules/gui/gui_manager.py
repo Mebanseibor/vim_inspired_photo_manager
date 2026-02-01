@@ -13,17 +13,54 @@ from ..cache_management import cache_manager as cM
 from ..file_system_management import file_system_manager as fsM
 from ..shared import shared as sh
 
-IMAGE_FG_COLOR_DEFAULT = 0
-IMAGE_FG_COLOR_KEEP = 1
-IMAGE_FG_COLOR_DELETE = 2
-IMAGE_FG_COLOR_TO_REVIEW = 3
 
-COLORS = {
-    IMAGE_FG_COLOR_DEFAULT: "white",
-    IMAGE_FG_COLOR_KEEP: "green",
-    IMAGE_FG_COLOR_DELETE: "red",
-    IMAGE_FG_COLOR_TO_REVIEW: "yellow",
-}
+class Dimensions:
+    def __init__(self):
+        self.status_ribbon = self.StatusRibbon()
+
+    class StatusRibbon:
+        def __init__(self):
+            self.height: int = 20
+            self.label = self.Label()
+
+        class Label:
+            font_size: int = 11
+
+
+class Colors:
+    def __init__(self):
+        self.status = self.Status()
+        self.background = self.Background()
+        self.text = self.Text()
+        self.palette = self.Palette()
+
+    class Status:
+        default = "white"
+        keep = "green"
+        delete = "red"
+        to_review = "yellow"
+
+    class Text:
+        light = "#ffffff"
+        light_faded = "#afafaf"
+        neutral = "#e8eaed"
+        neutral_faded = "#bdc1c6"
+        dark_faded = "#1c1c1c"
+        dark = "#111111"
+
+    class Background:
+        base = "#333333"
+        lighter = "#444444"
+        darker = "#2a2a2a"
+
+    class Palette:
+        secondary = "#bb9af7"
+        accent = "#73daca"
+        primary = "#3d59a8"
+
+
+COLORS: Colors = Colors()
+DIMENSIONS: Dimensions = Dimensions()
 
 
 class LabelAndValue(ctk.CTkFrame):
@@ -221,7 +258,9 @@ class PositiveNegativePopup(MainPopup):
         self.prompt_title.grid(row=0, column=0, columnspan=2)
 
         self.prompt_negative: ctk.CTkButton = ctk.CTkButton(
-            self.prompt_container, text=negativeText, fg_color="#444444"
+            self.prompt_container,
+            text=negativeText,
+            fg_color=COLORS.background.lighter,
         )
         self.prompt_negative.grid(row=1, column=0)
 
@@ -331,13 +370,13 @@ class SummaryScreen(ctk.CTkFrame):
         self.images_gallery_to_keep: ImageGallery = ImageGallery(
             self.scrollable_frame_for_galleries,
             "To Keep",
-            COLORS[IMAGE_FG_COLOR_KEEP],
+            COLORS.status.keep,
             image_size=self.image_size,
         )
         self.images_gallery_to_dump: ImageGallery = ImageGallery(
             self.scrollable_frame_for_galleries,
             "To Dump",
-            COLORS[IMAGE_FG_COLOR_DELETE],
+            COLORS.status.delete,
             image_size=self.image_size,
         )
 
@@ -498,17 +537,17 @@ class SummaryScreen(ctk.CTkFrame):
             )
             if not temp:
                 return
-            if temp.highlight_color == IMAGE_FG_COLOR_KEEP:
+            if temp.highlight_color == COLORS.status.keep:
                 self.images_gallery_to_keep.add_image(abspath_image, temp)
                 self.summary_details_images_to_keep_lav.set_value(
                     len(self.images_gallery_to_keep.images)
                 )
-            elif temp.highlight_color == IMAGE_FG_COLOR_DELETE:
+            elif temp.highlight_color == COLORS.status.delete:
                 self.images_gallery_to_dump.add_image(abspath_image, temp)
                 self.summary_details_images_to_dump_lav.set_value(
                     len(self.images_gallery_to_dump.images)
                 )
-            elif temp.highlight_color == IMAGE_FG_COLOR_DEFAULT:
+            elif temp.highlight_color == COLORS.status.default:
                 self.unmarked_images.append(abspath_image)
                 self.summary_details_unmarked_images.set_value(
                     len(self.unmarked_images)
@@ -523,13 +562,14 @@ class SummaryScreen(ctk.CTkFrame):
 class StartScreen(ctk.CTkFrame):
     def __init__(
         self,
-        parent: MainApp,
+        parent: ctk.CTkFrame,
+        mainApp: MainApp,
         selection_jpeg: fsM.SelectionFromDirectory,
         selection_raw: fsM.SelectionFromDirectory | None,
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
-        self.app: MainApp = parent
+        self.app: MainApp = mainApp
         self.start_screen_event: Event = Event()
 
         self.is_keymap_picture_actions_ready = False
@@ -544,6 +584,7 @@ class StartScreen(ctk.CTkFrame):
 
         self.filepaths: list[str] = abspath_jpegs
         self.filepaths_images_size = len(self.filepaths)
+        self.file_counter: int = 0
 
         self.pages: list[ctk.CTkFrame] = []
 
@@ -557,28 +598,14 @@ class StartScreen(ctk.CTkFrame):
         self.summary_screen = SummaryScreen(self.summary_page, self)
         self.summary_screen.pack(expand=True, fill=ctk.BOTH)
 
-        # location section
-        self.location_frame: ctk.CTkFrame = ctk.CTkFrame(self.main_page)
-        self.location_frame.grid_rowconfigure(0, weight=1)
-        self.location_frame.grid_columnconfigure(1, weight=1)
-        self.location_frame.pack(fill=ctk.X)
-
-        self.currect_abs_path_l = ctk.CTkLabel(
-            self.location_frame, text=self.selection_jpeg.abspath_dir
-        )
-        self.file_l = ctk.CTkLabel(
-            self.location_frame, text=f"Number of images = {self.filepaths_images_size}"
-        )
-
-        self.currect_abs_path_l.grid(row=0, column=0)
-        self.file_l.grid(row=0, column=1, sticky="w", padx=(10, 5))
-
         # components
         self.mapped_key_press_l = ctk.CTkLabel(self.main_page, text="Mapped key")
         self.command_l = ctk.CTkLabel(self.main_page, text="Command")
         self.system_log_l = ctk.CTkLabel(self.main_page, text="System Logs")
         self.image_highlight_l = ctk.CTkLabel(self.main_page, text="", height=8)
-        self.image_l = ctk.CTkLabel(self.main_page, text="")
+        self.image_l = ctk.CTkLabel(
+            self.main_page, text="", fg_color=COLORS.background.base
+        )
         self.raw_file_indicator = ctk.CTkLabel(self.image_l, text="")
 
         # self.command_l.pack()
@@ -587,9 +614,6 @@ class StartScreen(ctk.CTkFrame):
         self.image_highlight_l.pack(fill="x")
         self.image_l.pack(expand=True, fill=ctk.BOTH)
         self.update_idletasks()
-
-        if self.filepaths_images_size == 0:
-            self.file_l.configure(text="No images here")
 
         self.cacheHandler: cM.ImageItemCacheHandler
 
@@ -601,6 +625,14 @@ class StartScreen(ctk.CTkFrame):
     def event_char(self, char):
         return f"'{char}'"
 
+    def on_image_change(self):
+        self.loadImageFromCacheHandler()
+
+        filepath = self.cacheHandler.getAbspathOfCurrent()
+        filepath = filepath if filepath else "Cannot get filepath"
+        self.app.status_ribbon.filepath_section.set_filepath(filepath)
+        self.app.status_ribbon.file_counter_section.set_counter(self.file_counter)
+
     def on_previous(self, event):
         self.update_system_log_l("Displaying previous image")
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
@@ -609,10 +641,10 @@ class StartScreen(ctk.CTkFrame):
             self.command_l.configure(text="No image")
             return
 
-        self.cacheHandler.prev()
-        self.file_l.configure(text=self.cacheHandler.getFileFullNameFromCurr())
         self.command_l.configure(text="Prev photo")
-        self.loadImageFromCacheHandler()
+        if self.cacheHandler.prev():
+            self.file_counter = self.file_counter - 1
+            self.on_image_change()
 
     def on_next(self, event):
         self.update_system_log_l("Displaying next image")
@@ -622,17 +654,17 @@ class StartScreen(ctk.CTkFrame):
             self.command_l.configure(text="No image")
             return
 
-        self.cacheHandler.next()
-        self.file_l.configure(text=self.cacheHandler.getFileFullNameFromCurr())
         self.command_l.configure(text="Next photo")
-        self.loadImageFromCacheHandler()
+        if self.cacheHandler.next():
+            self.file_counter = self.file_counter + 1
+            self.on_image_change()
 
     def on_deletion(self, event):
         self.update_system_log_l("Deleting")
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
         self.command_l.configure(text="Marking to delete")
 
-        fg_color = IMAGE_FG_COLOR_DELETE
+        fg_color = COLORS.status.delete
         if not self.cacheHandler.updateHighlightColor(fg_color):
             return
 
@@ -643,7 +675,7 @@ class StartScreen(ctk.CTkFrame):
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
         self.command_l.configure(text="Marking to keep")
 
-        fg_color = IMAGE_FG_COLOR_KEEP
+        fg_color = COLORS.status.keep
         if not self.cacheHandler.updateHighlightColor(fg_color):
             return
 
@@ -654,7 +686,7 @@ class StartScreen(ctk.CTkFrame):
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
         self.command_l.configure(text="Marking to clear")
 
-        fg_color = IMAGE_FG_COLOR_DEFAULT
+        fg_color = COLORS.status.default
         if not self.cacheHandler.updateHighlightColor(fg_color):
             return
 
@@ -665,7 +697,7 @@ class StartScreen(ctk.CTkFrame):
         self.mapped_key_press_l.configure(text=self.event_char(event.char))
         self.command_l.configure(text="Marking to review")
 
-        fg_color = IMAGE_FG_COLOR_TO_REVIEW
+        fg_color = COLORS.status.to_review
         if not self.cacheHandler.updateHighlightColor(fg_color):
             return
 
@@ -735,13 +767,16 @@ class StartScreen(ctk.CTkFrame):
         curr = self.cacheHandler.curr
         if not curr:
             return
-        self.file_l.configure(text=os.path.basename(curr.image_item.fs_item.fullName()))
+
+        self.file_counter = self.file_counter + 1
+
         cM.initCachingForDirectory(
             self.selection_jpeg.abspath_dir,
             self.app.live_event,
             self.start_screen_event,
         )
-        self.loadImageFromCacheHandler()
+        self.app.status_ribbon.file_counter_section.set_max(len(self.filepaths))
+        self.on_image_change()
         self.is_keymap_picture_actions_ready = True
         self._init_keymaps_picture_actions()
 
@@ -789,6 +824,12 @@ class StartScreen(ctk.CTkFrame):
         self.start_screen_event.set()
         self.app.show_home_screen()
 
+        def hideStatusRibbonForAll():
+            self.app.status_ribbon.file_counter_section.hide()
+            self.app.status_ribbon.filepath_section.hide()
+
+        hideStatusRibbonForAll()
+
     def load_page(self, page: ctk.CTkFrame):
         for _page in self.pages:
             _page.pack_forget()
@@ -796,11 +837,134 @@ class StartScreen(ctk.CTkFrame):
 
         self.update_idletasks()
 
+        def updateStatusRibbonForPage(page: ctk.CTkFrame):
+            if page is self.main_page:
+                self.app.status_ribbon.file_counter_section.show()
+                self.app.status_ribbon.filepath_section.show()
+            elif page is self.summary_page:
+                self.app.status_ribbon.file_counter_section.hide()
+                self.app.status_ribbon.filepath_section.hide()
+
         if page is self.main_page:
             self.app.replace_keymaps(self.init_keymaps)
+            updateStatusRibbonForPage(page)
         elif page is self.summary_page:
             self.app.replace_keymaps(self.summary_screen.init_keymaps)
+            updateStatusRibbonForPage(page)
             Thread(target=self.summary_screen.refresh_list, daemon=True).start()
+
+
+class StatusRibbon(ctk.CTkFrame):
+    def __init__(self, app: MainApp, **kwargs):
+        super().__init__(
+            app,
+            fg_color=COLORS.background.darker,
+            height=DIMENSIONS.status_ribbon.height,
+            **kwargs,
+        )
+        self.app = app
+
+        self.pack(fill=ctk.X, ipadx=24)
+
+        self.phase_section = self.PhaseSection(self)
+        self.file_counter_section = self.FileCounterSection(self)
+        self.filepath_section = self.FilepathSection(self)
+
+    class Label(ctk.CTkLabel):
+        def __init__(
+            self, parent: ctk.CTkFrame, text_color: str | None = None, **kwargs
+        ):
+            self.font = ctk.CTkFont(size=DIMENSIONS.status_ribbon.label.font_size)
+
+            super().__init__(
+                parent,
+                text="",
+                text_color=text_color if text_color else COLORS.text.light_faded,
+                font=self.font,
+                **kwargs,
+            )
+            self.pack(side=ctk.LEFT, ipadx=2)
+
+    class Title(Label):
+        def __init__(
+            self, parent: ctk.CTkFrame, text_color: str | None = None, **kwargs
+        ):
+            super().__init__(parent, text_color, **kwargs)
+            self.font.configure(weight="bold")
+
+    class BaseSeperator(ctk.CTkLabel):
+        def __init__(self, parent: Any, **kwargs):
+            super().__init__(
+                parent,
+                text="",
+                width=8,
+                height=parent.winfo_height(),
+                **kwargs,
+            )
+            self.pack(side=ctk.LEFT)
+
+    class BarSeperator(BaseSeperator):
+        def __init__(self, parent: Any, **kwargs):
+            super().__init__(parent, **kwargs)
+            self.configure(text="|")
+
+    class NavigationSeperator(BaseSeperator):
+        def __init__(self, parent: Any, **kwargs):
+            super().__init__(parent, **kwargs)
+            self.configure(text=">")
+
+    class Section(ctk.CTkFrame):
+        def __init__(
+            self, status_ribbon: StatusRibbon, fg_color=COLORS.background.base, **kwargs
+        ):
+            super().__init__(
+                status_ribbon,
+                fg_color=fg_color,
+                height=status_ribbon.winfo_height(),
+                **kwargs,
+            )
+            self.show()
+
+        def show(self):
+            self.pack(side=ctk.LEFT, ipadx=2)
+
+        def hide(self):
+            self.pack_forget()
+
+    class PhaseSection(Section):
+        def __init__(self, status_ribbon: StatusRibbon):
+            super().__init__(status_ribbon, fg_color=COLORS.palette.primary)
+            self.title = status_ribbon.Title(self, text_color=COLORS.text.neutral_faded)
+
+        def set_phase(self, phase: str):
+            self.title.configure(text=phase)
+
+    class FilepathSection(Section):
+        def __init__(self, status_ribbon: StatusRibbon):
+            super().__init__(status_ribbon, fg_color=COLORS.palette.secondary)
+            self.filepath = status_ribbon.Label(self, text_color=COLORS.text.dark_faded)
+
+        def set_filepath(self, filepath: str):
+            self.filepath.configure(text=filepath)
+
+    class FileCounterSection(Section):
+        def __init__(
+            self, status_ribbon: StatusRibbon, start: int = 0, maximum: int = 0
+        ):
+            super().__init__(status_ribbon, fg_color=COLORS.palette.secondary)
+            self.counter: int = start
+            self.maximum: int = maximum
+
+            self.counter_label = status_ribbon.Label(
+                self, text_color=COLORS.text.dark_faded
+            )
+
+        def set_counter(self, counter: int):
+            self.counter = counter
+            self.counter_label.configure(text=f"{self.counter}/{self.maximum}")
+
+        def set_max(self, maximum: int):
+            self.maximum = maximum
 
 
 class MainApp(ctk.CTk):
@@ -816,6 +980,11 @@ class MainApp(ctk.CTk):
         self.home_screen: HomeScreen | None = None
         self.start_screen: StartScreen | None = None
 
+        self.working_area: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.working_area.pack(fill=ctk.BOTH, expand=True)
+
+        self.status_ribbon: StatusRibbon = StatusRibbon(self)
+
         self.reset()
 
     def reset(self):
@@ -824,13 +993,15 @@ class MainApp(ctk.CTk):
 
         if self.home_screen:
             self.home_screen.destroy()
-        self.home_screen = HomeScreen(self)
+        self.home_screen = HomeScreen(self.working_area, self)
 
         if self.start_screen:
             self.start_screen.destroy()
         self.start_screen = None
 
         self.show_home_screen()
+        self.status_ribbon.filepath_section.hide()
+        self.status_ribbon.file_counter_section.hide()
 
     def start(self):
         if self.home_screen is None:
@@ -841,11 +1012,12 @@ class MainApp(ctk.CTk):
             print("Directories or filepaths were not valid")
             return
 
-        if self.home_screen.directory_prompt_jpeg is None:
-            print("Directory for jpegs was not set")
+        if self.home_screen.directory_prompt_jpeg.selection is None:
+            print("Selection for jpegs was not set")
             return
 
         self.start_screen = StartScreen(
+            self.working_area,
             self,
             selection_jpeg=self.home_screen.directory_prompt_jpeg.selection,
             selection_raw=self.home_screen.directory_prompt_raw.selection,
@@ -866,6 +1038,7 @@ class MainApp(ctk.CTk):
 
         self.start_screen.pack(expand=True, fill=ctk.BOTH)
         self.replace_keymaps(self.start_screen.init_keymaps)
+        self.status_ribbon.phase_section.set_phase("Start Screen")
         return True
 
     def show_home_screen(self):
@@ -879,6 +1052,8 @@ class MainApp(ctk.CTk):
         self.home_screen.pack(expand=True, fill=ctk.BOTH)
 
         self.replace_keymaps(self.home_screen.init_keymaps)
+
+        self.status_ribbon.phase_section.set_phase("Home Screen")
 
     def on_app_close(self, event):
         self.quit()
@@ -986,12 +1161,13 @@ class DirectoryPromptItem(ctk.CTkFrame):
 class HomeScreen(ctk.CTkFrame):
     def __init__(
         self,
-        parent,
+        parent: ctk.CTkFrame,
+        mainApp: MainApp,
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
 
-        self.app = parent
+        self.app: MainApp = mainApp
 
         self.set_directories_label = ctk.CTkLabel(self, text="Set directories/folder")
         self.set_directories_label.pack(pady=8)
@@ -1154,7 +1330,7 @@ class HomeScreen(ctk.CTkFrame):
 class FSItemGUIHandler:
     def __init__(self, fs_item: fsM.FileSystemItem, image):
         self.image = image
-        self.highlight_color: int = IMAGE_FG_COLOR_DEFAULT
+        self.highlight_color: str = COLORS.status.default
         self.fs_item: fsM.FileSystemItem = fs_item
 
 
@@ -1181,9 +1357,8 @@ def createImageFromAbspath(abspath: str):
     return img
 
 
-def updateFG(label: ctk.CTkLabel, fg_color: int) -> bool:
-    fg_color_str = COLORS.get(fg_color, IMAGE_FG_COLOR_DEFAULT)
-    label.configure(fg_color=fg_color_str)
+def updateFG(label: ctk.CTkLabel, fg_color: str) -> bool:
+    label.configure(fg_color=fg_color)
     return True
 
 
