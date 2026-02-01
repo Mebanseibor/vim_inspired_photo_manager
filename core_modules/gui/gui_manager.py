@@ -17,14 +17,18 @@ from ..shared import shared as sh
 class Dimensions:
     def __init__(self):
         self.status_ribbon = self.StatusRibbon()
+        self.general = self.General()
 
     class StatusRibbon:
         def __init__(self):
-            self.height: int = 20
+            self.height: int = 16
             self.label = self.Label()
 
         class Label:
             font_size: int = 11
+
+    class General:
+        horizontal_divider_height: int = 2
 
 
 class Colors:
@@ -57,10 +61,40 @@ class Colors:
         secondary = "#bb9af7"
         accent = "#73daca"
         primary = "#3d59a8"
+        primary_darker = "#1b3786"
+        primary_lighter = "#5d79c8"
 
 
 COLORS: Colors = Colors()
 DIMENSIONS: Dimensions = Dimensions()
+
+
+class KeyBind:
+    def __init__(self, keymap: str, action: Any, desc: str | None = None):
+        self.keymap: str = keymap
+        self.action: Any = action
+        self.desc: str | None = desc
+
+    def getDesc(self) -> str:
+        return self.desc if self.desc else "Unknown action"
+
+
+class Button(ctk.CTkButton):
+    def __init__(
+        self,
+        master: Any,
+        fg_color=COLORS.palette.primary,
+        hover_color=COLORS.palette.primary_lighter,
+        command=None,
+        **kwargs,
+    ):
+        super().__init__(
+            master,
+            fg_color=fg_color,
+            hover_color=hover_color,
+            command=command,
+            **kwargs,
+        )
 
 
 class LabelAndValue(ctk.CTkFrame):
@@ -206,8 +240,15 @@ class MainPopup(ctk.CTkFrame):
         self.app = parent
         self.name: str = name
 
-        self.title: ctk.CTkLabel = ctk.CTkLabel(self, text=self.name)
+        font = ctk.CTkFont(weight="bold", size=16)
+        self.title: ctk.CTkLabel = ctk.CTkLabel(self, text=self.name, font=font)
         self.title.pack(fill=ctk.BOTH)
+
+        ctk.CTkFrame(
+            self,
+            fg_color=COLORS.palette.primary,
+            height=DIMENSIONS.general.horizontal_divider_height,
+        ).pack(fill=ctk.X)
 
         self.on_close_actions: Callable[[], None] | None = None
 
@@ -248,7 +289,9 @@ class PositiveNegativePopup(MainPopup):
     ):
         super().__init__(parent, name=window_title, **kwargs)
 
-        self.prompt_container: ctk.CTkFrame = ctk.CTkFrame(self, fg_color="gray")
+        self.prompt_container: ctk.CTkFrame = ctk.CTkFrame(
+            self, fg_color=COLORS.background.lighter
+        )
         self.prompt_container.grid_columnconfigure(index=[0, 1], weight=1)
         self.prompt_container.pack(expand=True, fill=ctk.BOTH)
 
@@ -257,15 +300,17 @@ class PositiveNegativePopup(MainPopup):
         )
         self.prompt_title.grid(row=0, column=0, columnspan=2)
 
-        self.prompt_negative: ctk.CTkButton = ctk.CTkButton(
+        self.prompt_negative: Button = Button(
             self.prompt_container,
             text=negativeText,
-            fg_color=COLORS.background.lighter,
+            fg_color=COLORS.background.darker,
+            hover_color=COLORS.background.base,
+            command=self._negative,
         )
         self.prompt_negative.grid(row=1, column=0)
 
-        self.prompt_positive: ctk.CTkButton = ctk.CTkButton(
-            self.prompt_container, text=positiveText
+        self.prompt_positive: Button = Button(
+            self.prompt_container, text=positiveText, command=self._positive
         )
         self.prompt_positive.grid(row=1, column=1)
 
@@ -285,11 +330,49 @@ class PositiveNegativePopup(MainPopup):
         self.close()
 
     def init_keymaps(self):
-        self.app.bind_key("q", lambda event: self.close())
-        self.app.bind_key("<Escape>", lambda event: self.close())
-        self.app.bind_key("n", lambda event: self._negative())
-        self.app.bind_key("y", lambda event: self._positive())
-        self.app.bind_key("<Control-Return>", lambda event: self._positive())
+        self.app.bind_key(KeyBind("q", lambda event: self.close(), "Quit prompt"))
+        self.app.bind_key(
+            KeyBind("<Escape>", lambda event: self.close(), "Quit prompt")
+        )
+        self.app.bind_key(KeyBind("n", lambda event: self._negative(), "No, Cancel"))
+        self.app.bind_key(KeyBind("y", lambda event: self._positive(), "Yes, Proceed"))
+        self.app.bind_key(
+            KeyBind("<Control-Return>", lambda event: self._positive(), "Yes, Proceed")
+        )
+
+
+class HelpBox(MainPopup):
+    def __init__(
+        self,
+        app: MainApp,
+        keybinds: dict[str, KeyBind],
+        name: str = "Help Box",
+        **kwargs,
+    ):
+        super().__init__(app, name, **kwargs)
+
+        app.replace_keymaps(lambda: ())
+
+        font = ctk.CTkFont(slant="italic", size=12)
+        ctk.CTkLabel(
+            self, text="Press ? to close this help box", font=font, height=0
+        ).pack(fill=ctk.X, after=self.title)
+
+        self.scrollable_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scrollable_frame.pack(fill=ctk.BOTH, expand=True)
+
+        self.container: ctk.CTkFrame = ctk.CTkFrame(
+            self.scrollable_frame, fg_color=COLORS.background.lighter
+        )
+        self.container.pack(fill=ctk.BOTH, expand=True, padx=24, pady=8)
+
+        for keybind in keybinds.values():
+            label: LabelAndValue = LabelAndValue(
+                self.container, keybind.keymap, keybind.getDesc()
+            )
+            label.pack(fill=ctk.X, padx=4, pady=4, ipadx=4)
+
+        self.set_on_close_action(lambda: app.replace_keymaps_with_dict(keybinds))
 
 
 class SummaryScreen(ctk.CTkFrame):
@@ -391,9 +474,18 @@ class SummaryScreen(ctk.CTkFrame):
         self.start_screen.load_page(self.start_screen.main_page)
 
     def init_keymaps(self):
-        self.start_screen.app.bind_key("<Escape>", self.on_summary_screen_close)
-        self.start_screen.app.bind_key("q", self.on_summary_screen_close)
-        self.start_screen.app.bind_key("<Control-Return>", self.prompt_for_completion)
+        self.start_screen.app.bind_key(
+            KeyBind("q", self.on_summary_screen_close, "Quit to Start screen")
+        )
+        self.start_screen.app.bind_key(
+            KeyBind("<Escape>", self.on_summary_screen_close, "Quit to Start screen")
+        )
+
+        self.start_screen.app.bind_key(
+            KeyBind(
+                "<Control-Return>", self.prompt_for_completion, "Open completion prompt"
+            )
+        )
 
     def prompt_for_completion(self, event):
         if not self._is_filtering_by_intended_action_completed():
@@ -599,18 +691,12 @@ class StartScreen(ctk.CTkFrame):
         self.summary_screen.pack(expand=True, fill=ctk.BOTH)
 
         # components
-        self.mapped_key_press_l = ctk.CTkLabel(self.main_page, text="Mapped key")
-        self.command_l = ctk.CTkLabel(self.main_page, text="Command")
-        self.system_log_l = ctk.CTkLabel(self.main_page, text="System Logs")
         self.image_highlight_l = ctk.CTkLabel(self.main_page, text="", height=8)
         self.image_l = ctk.CTkLabel(
             self.main_page, text="", fg_color=COLORS.background.base
         )
         self.raw_file_indicator = ctk.CTkLabel(self.image_l, text="")
 
-        # self.command_l.pack()
-        # self.mapped_key_press_l.pack()
-        # self.system_log_l.pack()
         self.image_highlight_l.pack(fill="x")
         self.image_l.pack(expand=True, fill=ctk.BOTH)
         self.update_idletasks()
@@ -619,11 +705,7 @@ class StartScreen(ctk.CTkFrame):
 
     def update_system_log_l(self, log: str):
         print(log)
-        self.after(0, lambda: self.system_log_l.configure(text=log))
         self.update_idletasks()
-
-    def event_char(self, char):
-        return f"'{char}'"
 
     def on_image_change(self):
         self.loadImageFromCacheHandler()
@@ -635,34 +717,20 @@ class StartScreen(ctk.CTkFrame):
 
     def on_previous(self, event):
         self.update_system_log_l("Displaying previous image")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
 
-        if self.filepaths_images_size == 0:
-            self.command_l.configure(text="No image")
-            return
-
-        self.command_l.configure(text="Prev photo")
         if self.cacheHandler.prev():
             self.file_counter = self.file_counter - 1
             self.on_image_change()
 
     def on_next(self, event):
         self.update_system_log_l("Displaying next image")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
 
-        if self.filepaths_images_size == 0:
-            self.command_l.configure(text="No image")
-            return
-
-        self.command_l.configure(text="Next photo")
         if self.cacheHandler.next():
             self.file_counter = self.file_counter + 1
             self.on_image_change()
 
     def on_deletion(self, event):
         self.update_system_log_l("Deleting")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
-        self.command_l.configure(text="Marking to delete")
 
         fg_color = COLORS.status.delete
         if not self.cacheHandler.updateHighlightColor(fg_color):
@@ -672,8 +740,6 @@ class StartScreen(ctk.CTkFrame):
 
     def on_keep(self, event):
         self.update_system_log_l("Keep")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
-        self.command_l.configure(text="Marking to keep")
 
         fg_color = COLORS.status.keep
         if not self.cacheHandler.updateHighlightColor(fg_color):
@@ -683,8 +749,6 @@ class StartScreen(ctk.CTkFrame):
 
     def on_clear(self, event):
         self.update_system_log_l("Clear")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
-        self.command_l.configure(text="Marking to clear")
 
         fg_color = COLORS.status.default
         if not self.cacheHandler.updateHighlightColor(fg_color):
@@ -694,8 +758,6 @@ class StartScreen(ctk.CTkFrame):
 
     def on_review(self, event):
         self.update_system_log_l("Review")
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
-        self.command_l.configure(text="Marking to review")
 
         fg_color = COLORS.status.to_review
         if not self.cacheHandler.updateHighlightColor(fg_color):
@@ -717,10 +779,6 @@ class StartScreen(ctk.CTkFrame):
             target=lambda: subprocess.run(["explorer", "/select,", abspath]),
             daemon=True,
         ).start()
-
-    def any_key(self, event):
-        self.mapped_key_press_l.configure(text=self.event_char(event.char))
-        self.command_l.configure(text=event.keysym)
 
     def loadImageFromCacheHandler(self) -> bool:
         img = self.cacheHandler.getImage()
@@ -782,43 +840,53 @@ class StartScreen(ctk.CTkFrame):
 
     def init_keymaps(self):
         # escape keys
-        self.app.bind_key("<Escape>", self.on_start_screen_close)
-        self.app.bind_key("q", self.on_start_screen_close)
+        self.app.bind_key(
+            KeyBind("q", self.on_start_screen_close, "Quit to Home Screen")
+        )
+        self.app.bind_key(
+            KeyBind("<Escape>", self.on_start_screen_close, "Quit to Home Screen")
+        )
 
         if self.is_keymap_picture_actions_ready:
             self._init_keymaps_picture_actions()
 
     def _init_keymaps_picture_actions(self):
         # picture operations
-        self.app.bind_key("j", self.on_deletion)
-        self.app.bind_key("k", self.on_keep)
-        self.app.bind_key("c", self.on_clear)
-        self.app.bind_key("m", self.on_review)
-        self.app.bind_key(
-            "o",
-            lambda event: self.on_open_image(
-                event, self.cacheHandler.getAbspathOfCurrent()
-            ),
-        )
-
-        self.app.bind_key(
-            "e",
-            lambda event: self.on_open_image_in_fs(
-                event, self.cacheHandler.getAbspathOfCurrent()
-            ),
-        )
-
         # navigation
-        self.app.bind_key("l", self.on_next)
-        self.app.bind_key("h", self.on_previous)
+        self.app.bind_key(KeyBind("l", self.on_next, "Move right"))
+        self.app.bind_key(KeyBind("h", self.on_previous, "Move left"))
+
+        self.app.bind_key(KeyBind("j", self.on_deletion, "Mark for deletion"))
+        self.app.bind_key(KeyBind("k", self.on_keep, "Mark for keeping"))
+        self.app.bind_key(KeyBind("c", self.on_clear, "Clear marks"))
+        self.app.bind_key(KeyBind("m", self.on_review, "Mark for Review"))
+        self.app.bind_key(
+            KeyBind(
+                "o",
+                lambda event: self.on_open_image(
+                    event, self.cacheHandler.getAbspathOfCurrent()
+                ),
+                "Open image in default application",
+            )
+        )
+        self.app.bind_key(
+            KeyBind(
+                "e",
+                lambda event: self.on_open_image_in_fs(
+                    event, self.cacheHandler.getAbspathOfCurrent()
+                ),
+                "Open image in default file explorer",
+            )
+        )
 
         # app operations
         self.app.bind_key(
-            "<Control-Return>", lambda event: self.load_page(self.summary_page)
+            KeyBind(
+                "<Control-Return>",
+                lambda event: self.load_page(self.summary_page),
+                "Enter into summary page",
+            )
         )
-
-        # any keys
-        self.app.bind_key("<Key>", self.any_key)
 
     def on_start_screen_close(self, event):
         self.start_screen_event.set()
@@ -869,10 +937,16 @@ class StatusRibbon(ctk.CTkFrame):
         self.phase_section = self.PhaseSection(self)
         self.file_counter_section = self.FileCounterSection(self)
         self.filepath_section = self.FilepathSection(self)
+        self.message = self.Label(self, side=ctk.RIGHT)
+        self.message.set_text("Press ? to toggle help box")
 
     class Label(ctk.CTkLabel):
         def __init__(
-            self, parent: ctk.CTkFrame, text_color: str | None = None, **kwargs
+            self,
+            parent: ctk.CTkFrame,
+            text_color: str | None = None,
+            side: str = ctk.LEFT,
+            **kwargs,
         ):
             self.font = ctk.CTkFont(size=DIMENSIONS.status_ribbon.label.font_size)
 
@@ -883,7 +957,10 @@ class StatusRibbon(ctk.CTkFrame):
                 font=self.font,
                 **kwargs,
             )
-            self.pack(side=ctk.LEFT, ipadx=2)
+            self.pack(side=side, ipadx=4)
+
+        def set_text(self, text: str):
+            self.configure(text=text)
 
     class Title(Label):
         def __init__(
@@ -937,7 +1014,7 @@ class StatusRibbon(ctk.CTkFrame):
             self.title = status_ribbon.Title(self, text_color=COLORS.text.neutral_faded)
 
         def set_phase(self, phase: str):
-            self.title.configure(text=phase)
+            self.title.set_text(phase)
 
     class FilepathSection(Section):
         def __init__(self, status_ribbon: StatusRibbon):
@@ -945,7 +1022,7 @@ class StatusRibbon(ctk.CTkFrame):
             self.filepath = status_ribbon.Label(self, text_color=COLORS.text.dark_faded)
 
         def set_filepath(self, filepath: str):
-            self.filepath.configure(text=filepath)
+            self.filepath.set_text(filepath)
 
     class FileCounterSection(Section):
         def __init__(
@@ -961,7 +1038,7 @@ class StatusRibbon(ctk.CTkFrame):
 
         def set_counter(self, counter: int):
             self.counter = counter
-            self.counter_label.configure(text=f"{self.counter}/{self.maximum}")
+            self.counter_label.set_text(f"{self.counter}/{self.maximum}")
 
         def set_max(self, maximum: int):
             self.maximum = maximum
@@ -975,7 +1052,7 @@ class MainApp(ctk.CTk):
         self.attributes("-fullscreen", True)
         self.title("Vim Photo Manager")
 
-        self.bounded_keys: dict[str, Any] = {}
+        self.bounded_keys: dict[str, KeyBind] = {}
 
         self.home_screen: HomeScreen | None = None
         self.start_screen: StartScreen | None = None
@@ -985,11 +1062,43 @@ class MainApp(ctk.CTk):
 
         self.status_ribbon: StatusRibbon = StatusRibbon(self)
 
+        self.kb_help: KeyBind = KeyBind(
+            "<question>", self.on_toggle_help, "Show help box"
+        )
+        self.bind(self.kb_help.keymap, self.kb_help.action)
+        self.help_dialog: HelpBox | None = None
+
+        self.bind("<Key>", self.unmapped_key)
+
         self.reset()
+
+    def unmapped_key(self, event):
+        char = event.char
+        keysym = event.keysym
+        print(f"Pressing unknown key:\t{char}\t{keysym}")
+
+    def on_toggle_help(self, event=None):
+        # toggling it off
+        if self.help_dialog:
+            self.help_dialog.close()
+            self.help_dialog.destroy()
+            self.help_dialog = None
+
+        # toggling it on
+        else:
+            self.help_dialog = HelpBox(self, self.bounded_keys)
+            self.help_dialog.open()
+
+        print(f"Toggling help: {self.help_dialog is not None}")
 
     def reset(self):
         print("\n\n\t\t------------- RESETTING -------------\n\n")
         self.clear_keymaps()
+
+        if self.help_dialog:
+            self.help_dialog.close()
+            self.help_dialog.destroy()
+            self.help_dialog = None
 
         if self.home_screen:
             self.home_screen.destroy()
@@ -1059,9 +1168,9 @@ class MainApp(ctk.CTk):
         self.quit()
 
     def clear_keymaps(self):
-        for key in self.bounded_keys:
-            print(f"Unbinding:\t{key}\t{self.bounded_keys.get(key)}")
-            self.unbind(key)
+        for keybind in self.bounded_keys.values():
+            print(f"Unbinding:\t{keybind.keymap}\t{keybind.getDesc()}")
+            self.unbind(keybind.keymap)
 
         self.bounded_keys = {}
 
@@ -1070,12 +1179,28 @@ class MainApp(ctk.CTk):
         print(f"Replacing with keymaps:\t{keymaps_func}")
         keymaps_func()
 
-    def bind_key(self, key: str, function):
-        if self.bounded_keys.get(key):
-            self.unbind(key)
-        self.bind(key, function)
-        self.bounded_keys[key] = function
-        print(f"Binding:\t{key}\t{function}")
+    def replace_keymaps_with_dict(self, bounded_keys: dict[str, KeyBind]):
+        self.clear_keymaps()
+        for bounded_key in bounded_keys.values():
+            self.bind_key(bounded_key)
+
+    def bind_key(self, kb: KeyBind) -> bool:
+        if self.bounded_keys.get(kb.keymap):
+            print(
+                f"Error: Found conflicting keys {kb.keymap}, that performs action: {kb.getDesc()}"
+            )
+            return False
+
+        if kb.keymap == self.kb_help.keymap:
+            print(
+                f"Error: Cannot override the help keymapping, conflicting key {kb.keymap} for action: {kb.getDesc()}"
+            )
+            return False
+
+        self.bind(kb.keymap, kb.action)
+        self.bounded_keys[kb.keymap] = kb
+        print(f"Binding:\t{kb.keymap}\t{kb.getDesc()}")
+        return True
 
 
 class DirectoryPromptItem(ctk.CTkFrame):
@@ -1093,7 +1218,7 @@ class DirectoryPromptItem(ctk.CTkFrame):
         self.file_formats = file_formats
         self.selection: fsM.SelectionFromDirectory | None = None
 
-        self.btn_directory = ctk.CTkButton(
+        self.btn_directory = Button(
             self, text=self.title, command=self.select_directory
         )
         self.btn_directory.pack()
@@ -1226,7 +1351,7 @@ class HomeScreen(ctk.CTkFrame):
         self.container.pack(expand=True)
 
         start_font = ctk.CTkFont(weight="bold", size=16)
-        self.btn_start = ctk.CTkButton(
+        self.btn_start = Button(
             self.container, text="START", command=lambda: self.start(), font=start_font
         )
         self.btn_start.grid(row=0, column=0, ipadx=40, ipady=12)
@@ -1251,14 +1376,22 @@ class HomeScreen(ctk.CTkFrame):
 
     def init_keymaps(self):
         # escape keys
-        self.app.bind_key("<Escape>", self.app.on_app_close)
-        self.app.bind_key("q", self.app.on_app_close)
+        self.app.bind_key(
+            KeyBind("<Escape>", self.app.on_app_close, "Quit application")
+        )
+        self.app.bind_key(KeyBind("q", self.app.on_app_close, "Quit application"))
 
         # actions
         self.app.bind_key(
-            "<Control-o>", lambda event: self.directory_prompt_jpeg.select_directory()
+            KeyBind(
+                "<Control-o>",
+                lambda event: self.directory_prompt_jpeg.select_directory(),
+                "Open JPEG directory",
+            )
         )
-        self.app.bind_key("<Control-Return>", lambda event: self.start())
+        self.app.bind_key(
+            KeyBind("<Control-Return>", lambda event: self.start(), "Start")
+        )
 
     def on_success_directory_prompt_jpeg(self):
         self.manage_raws_container.pack(after=self.directory_prompt_jpeg)

@@ -12,6 +12,8 @@
     - Delete
     - Mark for review
 
+- Support for jpegs and raws being located in different directories
+
 - Utilizing [VIM keybindings](./docs/keybindings.md)
 
 ### Other features
@@ -50,5 +52,6 @@
 
 ## Planned future features
 
-- Help menu
+- Image inspection:
+  - Zooming
 - Displaying RAW files, when only RAW files were shot

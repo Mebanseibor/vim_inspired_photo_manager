@@ -1,5 +1,11 @@
 # Key bindings
 
+## Universal/App-wide scope
+
+| Key | Action                                        |
+| --- | --------------------------------------------- |
+| ?   | Open a help box to view available keybindings |
+
 ## Home Screen
 
 | Key        | Action                               |
