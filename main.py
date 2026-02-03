@@ -1,7 +1,7 @@
 import os
 
-from .cache_management import cache_manager as cM
-from .gui import gui_manager as guiM
+import core_modules.cache_manager as cM
+import core_modules.gui_manager as guiM
 
 if __name__ == "__main__":
     print("\n\n----- Start of the program -----\n\n")

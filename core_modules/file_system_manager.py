@@ -1,4 +1,5 @@
 import os
+
 import xxhash
 
 IMAGE_EXTENSIONS = ["jpg", "jpeg", "png"]

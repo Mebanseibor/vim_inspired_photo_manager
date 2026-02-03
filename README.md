@@ -1,32 +1,54 @@
-# VIM inspired Photo Manager
+<div align="center">
 
-"Inspired by [VIM](https://github.com/vim/vim) keybindings, a software that manages photos"
+# VIM-inspired Photo Manager
+
+**Keyboard base photo management software**
+
+_"Make decisions with less actions: keeping or deleting an image"_
+
+[![Download](https://img.shields.io/badge/Download-Now-3d59a8?style=for-the-badge&logoColor=ffffff&labelColor=111111&colorA=3d59a8&colorB=3d59a8)](https://github.com/Mebanseibor/vim_inspired_photo_manager/releases/latest)
+
+[![View keybindings](https://img.shields.io/badge/Keybindings-View-3d59a8?style=for-the-badge&logoColor=ffffff&labelColor=111111&colorA=3d59a8&colorB=3d59a8)](./docs/keybindings.md)
+
+<br/>
+
+_Inspired by_
+
+<a href="https://github.com/vim/vim">
+<img src="https://img.shields.io/badge/Vim-3d59a8?style=flat&logo=vim&logoColor=ffffff" width="56">
+</a>
+
+<br/>
+<br/>
+
+![Demo](./docs/assets/demo.gif)
+
+</div>
+
+---
 
 ## Features
 
-- Displaying and deleting the intended images
+- Support for jpegs and raws being located in different directories
 
 - Visually see the intended action for the image:
   - Actions:
     - Keep
     - Delete
-    - Mark for review
 
 - Inspecting an image:
   - Panning
   - Zooming
 
-- Support for jpegs and raws being located in different directories
-
-- Utilizing [VIM keybindings](./docs/keybindings.md)
-
-### Other features
+### Other notable features
 
 - Utilizes caching:
   - Saves processing time on subsequent processing of the same image
   - Cache utilization is independent of file relocation
 
-## Instructions
+---
+
+## Instructions to build the software from source
 
 ### Requirements
 
@@ -50,4 +72,4 @@
 
 - Clone or download this repository:
 - Run the software:
-  - Run the bash script [`start.sh`](./start.sh) or run the command `python -m core_modules.main`
+  - Run the command `python main`

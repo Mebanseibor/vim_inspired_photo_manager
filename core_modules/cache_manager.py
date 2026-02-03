@@ -1,10 +1,11 @@
 import os
 import pickle
 import threading as t
+
 from PIL import Image
 
-from ..file_system_management import file_system_manager as fsM
-from ..gui import gui_manager as guiM
+from core_modules import file_system_manager as fsM
+from core_modules import gui_manager as guiM
 
 CACHE_FOLDER = "cache"
 CACHE_HANDLER_WINDOW_SIZE = 8

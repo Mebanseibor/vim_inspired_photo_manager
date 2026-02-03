@@ -10,10 +10,10 @@ from typing import Any, Callable
 import customtkinter as ctk
 from PIL import Image
 
-from ..cache_management import cache_manager as cM
-from ..file_system_management import file_system_manager as fsM
-from ..others import others as oth
-from ..shared import shared as sh
+from core_modules import cache_manager as cM
+from core_modules import file_system_manager as fsM
+from core_modules import others as oth
+from core_modules import shared as sh
 
 
 class Direction:
@@ -870,7 +870,7 @@ class StartScreen(ctk.CTkFrame):
         self.app.bind_key(KeyBind("j", self.on_deletion, "Mark for deletion"))
         self.app.bind_key(KeyBind("k", self.on_keep, "Mark for keeping"))
         self.app.bind_key(KeyBind("c", self.on_clear, "Clear marks"))
-        self.app.bind_key(KeyBind("m", self.on_review, "Mark for Review"))
+        # self.app.bind_key(KeyBind("m", self.on_review, "Mark for Review"))
         self.app.bind_key(
             KeyBind(
                 "o",
