@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 import subprocess
 from threading import Event, Thread
@@ -11,7 +12,15 @@ from PIL import Image
 
 from ..cache_management import cache_manager as cM
 from ..file_system_management import file_system_manager as fsM
+from ..others import others as oth
 from ..shared import shared as sh
+
+
+class Direction:
+    left: str = "left"
+    right: str = "right"
+    up: str = "up"
+    down: str = "down"
 
 
 class Dimensions:
@@ -67,6 +76,7 @@ class Colors:
 
 COLORS: Colors = Colors()
 DIMENSIONS: Dimensions = Dimensions()
+DIRECTION: Direction = Direction()
 
 
 class KeyBind:
@@ -576,6 +586,8 @@ class SummaryScreen(ctk.CTkFrame):
 
                     return True
 
+                gc.collect()
+
                 if not deleteJPEG():
                     continue
 
@@ -839,7 +851,6 @@ class StartScreen(ctk.CTkFrame):
         self._init_keymaps_picture_actions()
 
     def init_keymaps(self):
-        # escape keys
         self.app.bind_key(
             KeyBind("q", self.on_start_screen_close, "Quit to Home Screen")
         )
@@ -879,6 +890,15 @@ class StartScreen(ctk.CTkFrame):
             )
         )
 
+        # modes
+        self.app.bind_key(
+            KeyBind(
+                "I",
+                self.on_enter_inspect_mode,
+                "Enter into inspect mode",
+            )
+        )
+
         # app operations
         self.app.bind_key(
             KeyBind(
@@ -887,6 +907,31 @@ class StartScreen(ctk.CTkFrame):
                 "Enter into summary page",
             )
         )
+
+    def on_enter_inspect_mode(self, event):
+        abspath_curr_image = self.cacheHandler.getAbspathOfCurrent()
+        if abspath_curr_image is None:
+            print("Error: Cannot get abspath of current image from cache handler")
+            return
+
+        self.app.clear_keymaps()
+
+        self.image_l.pack_forget()
+        self.image_highlight_l.pack_forget()
+
+        self.inspect_mode: InspectMode = InspectMode(
+            self.app, self.main_page, self.on_exit_inspect_mode
+        )
+        self.inspect_mode.set_images_to_inspect([abspath_curr_image])
+        self.inspect_mode.enter()
+
+    def on_exit_inspect_mode(self):
+        self.app.status_ribbon.phase_section.set_phase("Start Screen")
+
+        self.image_highlight_l.pack(expand=True, fill=ctk.X)
+        self.image_l.pack(expand=True, fill=ctk.BOTH, after=self.image_highlight_l)
+
+        self.app.replace_keymaps(self.init_keymaps)
 
     def on_start_screen_close(self, event):
         self.start_screen_event.set()
@@ -920,6 +965,220 @@ class StartScreen(ctk.CTkFrame):
             self.app.replace_keymaps(self.summary_screen.init_keymaps)
             updateStatusRibbonForPage(page)
             Thread(target=self.summary_screen.refresh_list, daemon=True).start()
+        gc.collect()
+
+
+class InspectMode:
+    def __init__(self, app: MainApp, canvas_holder: ctk.CTkFrame, on_exit_action):
+        self.app = app
+
+        canvas = ctk.CTkCanvas(
+            master=canvas_holder,
+            width=canvas_holder.winfo_reqwidth(),
+            height=canvas_holder.winfo_reqheight(),
+            highlightthickness=0,
+            relief="flat",
+            xscrollincrement=1,
+            yscrollincrement=1,
+            bg=COLORS.background.base,
+        )
+        self.canvas_manager = self.CanvasManager(canvas, canvas_holder)
+        self.canvas_manager.reset_view()
+        self._on_exit_action: Callable[[], None] = on_exit_action
+
+    def set_images_to_inspect(self, abspath_images: list[str]):
+        self.canvas_manager.set_images(abspath_images)
+
+    def enter(self):
+        self.app.status_ribbon.phase_section.set_phase("Inspect")
+        self.app.replace_keymaps(self.init_keymaps)
+        self.on_reset_view(None)
+
+    def on_exit(self, event=None):
+        self.canvas_manager.canvas.pack_forget()
+        gc.collect()
+        self._on_exit_action()
+
+    def on_zoom_in(self, event):
+        self.canvas_manager.zoom_in_on_focused_image()
+
+    def on_zoom_out(self, event):
+        self.canvas_manager.zoom_out_on_focused_image()
+
+    def on_zoom_in_and_center(self, event):
+        self.on_zoom_in(None)
+        self.on_center_view_to_focused_image(None)
+
+    def on_zoom_out_and_center(self, event):
+        self.on_zoom_out(None)
+        self.on_center_view_to_focused_image(None)
+
+    def on_zoom_to_fit(self, event):
+        focused_image = self.canvas_manager.get_focused_image()
+        if focused_image is None:
+            return
+        focused_image.set_zoom_to_fit()
+        self.canvas_manager.render_image_on_canvas(focused_image)
+
+    def on_zoom_fit_and_center(self, event):
+        self.on_zoom_to_fit(None)
+        self.on_center_view_to_focused_image(None)
+
+    def on_pan(self, event, direction: str):
+        self.canvas_manager.pan(direction)
+
+    def on_center_view_to_focused_image(self, event):
+        self.canvas_manager.center_view_to_focused_image()
+
+    def on_reset_view(self, event):
+        self.canvas_manager.reset_view()
+
+    def init_keymaps(self):
+        self.app.bind_key(KeyBind("q", self.on_zoom_out, "Zoom out"))
+        self.app.bind_key(KeyBind("e", self.on_zoom_in, "Zoom in"))
+        self.app.bind_key(KeyBind("f", self.on_zoom_to_fit, "Zoom fit"))
+        self.app.bind_key(
+            KeyBind("F", self.on_zoom_fit_and_center, "Zoom fit and center")
+        )
+        self.app.bind_key(
+            KeyBind("Q", self.on_zoom_out_and_center, "Zoom out and center")
+        )
+        self.app.bind_key(
+            KeyBind("E", self.on_zoom_in_and_center, "Zoom in and center")
+        )
+        self.app.bind_key(
+            KeyBind("a", lambda event: self.on_pan(event, DIRECTION.left), "Pan left")
+        )
+        self.app.bind_key(
+            KeyBind("d", lambda event: self.on_pan(event, DIRECTION.right), "Pan right")
+        )
+        self.app.bind_key(
+            KeyBind("w", lambda event: self.on_pan(event, DIRECTION.up), "Pan up")
+        )
+        self.app.bind_key(
+            KeyBind("s", lambda event: self.on_pan(event, DIRECTION.down), "Pan down")
+        )
+        self.app.bind_key(
+            KeyBind("c", self.on_center_view_to_focused_image, "Center view to image")
+        )
+        self.app.bind_key(KeyBind("r", self.on_reset_view, "Reset view"))
+        self.app.bind_key(KeyBind("<Escape>", self.on_exit, "Exit from inspect mode"))
+
+    class CanvasManager:
+        def __init__(self, canvas: ctk.CTkCanvas, canvas_holder: ctk.CTkFrame):
+            self.canvas: ctk.CTkCanvas = canvas
+            self.holder = oth.Holder(
+                canvas_holder.winfo_width(),
+                canvas_holder.winfo_height(),
+            )
+
+            self.panning_speed: int = 50  # in pixels
+            self.images: dict[str, oth.CanvasImage] = {}
+            self.focused_image_abspath: str | None = None
+            self.focused_image_id: int | None = None
+
+        def show_canvas(self):
+            self.canvas.pack(fill=ctk.BOTH, expand=True)
+
+        def reset_view(self):
+            focused_image = self.get_focused_image()
+            if focused_image is None:
+                return
+
+            focused_image.set_zoom_to_zoom_out_limit()
+
+            self.render_image_on_canvas(focused_image)
+            self.center_view_to_focused_image()
+
+            self.show_canvas()
+
+        def zoom_in_on_focused_image(self):
+            focused_image = self.get_focused_image()
+            if focused_image is None:
+                return
+
+            focused_image.zoom_in()
+            self.render_image_on_canvas(focused_image)
+
+        def zoom_out_on_focused_image(self):
+            focused_image = self.get_focused_image()
+            if focused_image is None:
+                return
+
+            focused_image.zoom_out()
+            self.render_image_on_canvas(focused_image)
+
+        def center_view_to_focused_image(self):
+            focused_image = self.get_focused_image()
+            if focused_image is None:
+                return
+
+            self.canvas.xview_moveto(0.0)
+            self.canvas.yview_moveto(0.0)
+
+            # centering to center of focused image
+            center_of_focused = focused_image.center_of_tk_image()
+            self.canvas.xview_scroll(center_of_focused.x, ctk.UNITS)
+            self.canvas.yview_scroll(center_of_focused.y, ctk.UNITS)
+
+        def pan(self, direction: str):
+            x_offset = 0
+            y_offset = 0
+            if direction == DIRECTION.left:
+                x_offset = -self.panning_speed
+            elif direction == DIRECTION.right:
+                x_offset = self.panning_speed
+            elif direction == DIRECTION.up:
+                y_offset = -self.panning_speed
+            elif direction == DIRECTION.down:
+                y_offset = self.panning_speed
+            self.canvas.xview_scroll(x_offset, ctk.UNITS)
+            self.canvas.yview_scroll(y_offset, ctk.UNITS)
+
+        def get_focused_image(self) -> oth.CanvasImage | None:
+            if not self.images:
+                return None
+
+            if self.focused_image_abspath is None:
+                return None
+
+            return self.images.get(self.focused_image_abspath)
+
+        def clear(self):
+            self.canvas.delete(ctk.ALL)
+
+        def set_images(self, abspath_images: list[str]):
+            if not abspath_images:
+                print("Error: abspath_images was empty")
+                return
+
+            self.clear()
+            for abspath in abspath_images:
+                image_pil = Image.open(abspath)
+                self.images[abspath] = oth.CanvasImage(image_pil, self.holder)
+
+            # initial viewing behaviour
+            self.focused_image_abspath = list(self.images.keys())[0]
+
+        def render_image_on_canvas(self, image: oth.CanvasImage):
+            self.clear()
+            self.focused_image_id = self.canvas.create_image(
+                self.holder.center_x,
+                self.holder.center_y,
+                anchor=ctk.CENTER,
+                image=image.imageTk,
+            )
+
+            x1, y1, x2, y2 = self.canvas.bbox("all")
+            padding_width = self.holder.width / 2
+            padding_height = self.holder.height / 2
+            scroolregion_with_padding = (
+                x1 - padding_width,
+                y1 - padding_height,
+                x2 + padding_width,
+                y2 + padding_height,
+            )
+            self.canvas.configure(scrollregion=scroolregion_with_padding)
 
 
 class StatusRibbon(ctk.CTkFrame):
@@ -1093,6 +1352,7 @@ class MainApp(ctk.CTk):
 
     def reset(self):
         print("\n\n\t\t------------- RESETTING -------------\n\n")
+        gc.collect()
         self.clear_keymaps()
 
         if self.help_dialog:
@@ -1392,6 +1652,9 @@ class HomeScreen(ctk.CTkFrame):
         self.app.bind_key(
             KeyBind("<Control-Return>", lambda event: self.start(), "Start")
         )
+        self.app.bind_key(
+            KeyBind("<Control-R>", lambda event: self.app.reset(), "Reset")
+        )
 
     def on_success_directory_prompt_jpeg(self):
         self.manage_raws_container.pack(after=self.directory_prompt_jpeg)
@@ -1485,7 +1748,7 @@ def createImageFromAbspath(abspath: str):
     img = Image.open(abspath)
     img.thumbnail(
         (sh.APP_WIDTH, sh.APP_HEIGHT),
-        Image.Resampling.BICUBIC,
+        Image.Resampling.BOX,
     )
     return img
 

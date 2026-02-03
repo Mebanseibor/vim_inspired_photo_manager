@@ -12,6 +12,10 @@
     - Delete
     - Mark for review
 
+- Inspecting an image:
+  - Panning
+  - Zooming
+
 - Support for jpegs and raws being located in different directories
 
 - Utilizing [VIM keybindings](./docs/keybindings.md)
@@ -47,11 +51,3 @@
 - Clone or download this repository:
 - Run the software:
   - Run the bash script [`start.sh`](./start.sh) or run the command `python -m core_modules.main`
-
----
-
-## Planned future features
-
-- Image inspection:
-  - Zooming
-- Displaying RAW files, when only RAW files were shot
