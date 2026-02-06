@@ -71,5 +71,6 @@ _Inspired by_
 ### Steps
 
 - Clone or download this repository:
+  - `git clone https://github.com/Mebanseibor/vim_inspired_photo_manager/`
 - Run the software:
-  - Run the command `python main`
+  - Run the command `python main.py`

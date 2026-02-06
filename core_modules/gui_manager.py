@@ -636,11 +636,10 @@ class SummaryScreen(ctk.CTkFrame):
         for abspath_image in self.start_screen.filepaths:
             if self.refresh_event.is_set():
                 return
-            temp: FSItemGUIHandler | None = cM.cacheImageAtAbspathIfNotCached(
-                abspath_image
-            )
-            if not temp:
-                return
+
+            temp: FSItemGUIHandler | None = cM.utilize_cache(abspath_image)
+            if temp is None:
+                continue
             if temp.highlight_color == COLORS.status.keep:
                 self.images_gallery_to_keep.add_image(abspath_image, temp)
                 self.summary_details_images_to_keep_lav.set_value(
@@ -688,7 +687,6 @@ class StartScreen(ctk.CTkFrame):
 
         self.filepaths: list[str] = abspath_jpegs
         self.filepaths_images_size = len(self.filepaths)
-        self.file_counter: int = 0
 
         self.pages: list[ctk.CTkFrame] = []
 
@@ -725,20 +723,25 @@ class StartScreen(ctk.CTkFrame):
         filepath = self.cacheHandler.getAbspathOfCurrent()
         filepath = filepath if filepath else "Cannot get filepath"
         self.app.status_ribbon.filepath_section.set_filepath(filepath)
-        self.app.status_ribbon.file_counter_section.set_counter(self.file_counter)
+
+        file_counter: int | None = (
+            None
+            if self.cacheHandler.index_curr_ref is None
+            else self.cacheHandler.index_curr_ref + 1
+        )
+
+        self.app.status_ribbon.file_counter_section.set_counter(file_counter)
 
     def on_previous(self, event):
         self.update_system_log_l("Displaying previous image")
 
         if self.cacheHandler.prev():
-            self.file_counter = self.file_counter - 1
             self.on_image_change()
 
     def on_next(self, event):
         self.update_system_log_l("Displaying next image")
 
         if self.cacheHandler.next():
-            self.file_counter = self.file_counter + 1
             self.on_image_change()
 
     def on_deletion(self, event):
@@ -838,13 +841,6 @@ class StartScreen(ctk.CTkFrame):
         if not curr:
             return
 
-        self.file_counter = self.file_counter + 1
-
-        cM.initCachingForDirectory(
-            self.selection_jpeg.abspath_dir,
-            self.app.live_event,
-            self.start_screen_event,
-        )
         self.app.status_ribbon.file_counter_section.set_max(len(self.filepaths))
         self.on_image_change()
         self.is_keymap_picture_actions_ready = True
@@ -1218,8 +1214,8 @@ class StatusRibbon(ctk.CTkFrame):
             )
             self.pack(side=side, ipadx=4)
 
-        def set_text(self, text: str):
-            self.configure(text=text)
+        def set_text(self, text: str | int | float | None | bool):
+            self.configure(text=str(text))
 
     class Title(Label):
         def __init__(
@@ -1285,19 +1281,27 @@ class StatusRibbon(ctk.CTkFrame):
 
     class FileCounterSection(Section):
         def __init__(
-            self, status_ribbon: StatusRibbon, start: int = 0, maximum: int = 0
+            self,
+            status_ribbon: StatusRibbon,
+            start: int | None = None,
+            maximum: int = 0,
         ):
             super().__init__(status_ribbon, fg_color=COLORS.palette.secondary)
-            self.counter: int = start
+            self.counter: int | None = start
             self.maximum: int = maximum
 
             self.counter_label = status_ribbon.Label(
                 self, text_color=COLORS.text.dark_faded
             )
+            self.error_message: str = "None"
 
-        def set_counter(self, counter: int):
+        def set_counter(self, counter: int | None):
             self.counter = counter
-            self.counter_label.set_text(f"{self.counter}/{self.maximum}")
+            text: str = (
+                f"{self.counter}/{self.maximum}" if counter else self.error_message
+            )
+
+            self.counter_label.set_text(text)
 
         def set_max(self, maximum: int):
             self.maximum = maximum
@@ -1425,18 +1429,17 @@ class MainApp(ctk.CTk):
         self.status_ribbon.phase_section.set_phase("Home Screen")
 
     def on_app_close(self, event):
+        self.live_event.set()
         self.quit()
 
     def clear_keymaps(self):
         for keybind in self.bounded_keys.values():
-            print(f"Unbinding:\t{keybind.keymap}\t{keybind.getDesc()}")
             self.unbind(keybind.keymap)
 
         self.bounded_keys = {}
 
     def replace_keymaps(self, keymaps_func):
         self.clear_keymaps()
-        print(f"Replacing with keymaps:\t{keymaps_func}")
         keymaps_func()
 
     def replace_keymaps_with_dict(self, bounded_keys: dict[str, KeyBind]):
@@ -1459,7 +1462,6 @@ class MainApp(ctk.CTk):
 
         self.bind(kb.keymap, kb.action)
         self.bounded_keys[kb.keymap] = kb
-        print(f"Binding:\t{kb.keymap}\t{kb.getDesc()}")
         return True
 
 

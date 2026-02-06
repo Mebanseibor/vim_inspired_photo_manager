@@ -26,7 +26,6 @@
 | j          | Mark for delete                                    |
 | k          | Mark for keep                                      |
 | c          | Mark for clear                                     |
-| m          | Mark for review                                    |
 | o          | Open current image in system's default application |
 | e          | Open current image in system's file explorer       |
 | I          | Enter into inspection mode                         |
