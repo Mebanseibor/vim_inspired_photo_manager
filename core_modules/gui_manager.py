@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import os
+import random
 import subprocess
 from threading import Event, Thread
 from tkinter import IntVar, filedialog
@@ -12,8 +13,37 @@ from PIL import Image
 
 from core_modules import cache_manager as cM
 from core_modules import file_system_manager as fsM
+from core_modules import notification_manager as ntfM
 from core_modules import others as oth
 from core_modules import shared as sh
+
+
+class Font:
+    def __init__(self):
+        self.size = self.Size()
+        self.family = self.Family()
+        self.style = self.Style(self)
+
+    class Size:
+        status_ribbon_label: int = 10
+        status_ribbon_title: int = 12
+
+    class Family:
+        status_ribbon: str | None = None
+
+    class Style:
+        def __init__(self, font: Font):
+            self.status_ribbon_label: ctk.CTkFont = ctk.CTkFont(
+                family=font.family.status_ribbon, size=font.size.status_ribbon_label
+            )
+
+            self.status_ribbon_title: ctk.CTkFont = ctk.CTkFont(
+                family=font.family.status_ribbon, size=font.size.status_ribbon_title
+            )
+            self.title: ctk.CTkFont = ctk.CTkFont(weight="bold", size=16)
+            self.subtitle: ctk.CTkFont = ctk.CTkFont(size=12)
+            self.hint: ctk.CTkFont = ctk.CTkFont(slant="italic", size=12)
+            self.big_btn_action: ctk.CTkFont = ctk.CTkFont(weight="bold", size=16)
 
 
 class Direction:
@@ -27,17 +57,18 @@ class Dimensions:
     def __init__(self):
         self.status_ribbon = self.StatusRibbon()
         self.general = self.General()
+        self.notification = self.Notification()
+
+    class Notification:
+        highlighter_width: int = 4
+        extra_ntf_title_wrapping_offset_length: int = 4
 
     class StatusRibbon:
-        def __init__(self):
-            self.height: int = 16
-            self.label = self.Label()
-
-        class Label:
-            font_size: int = 11
+        height: int = 16
 
     class General:
         horizontal_divider_height: int = 2
+        vertical_divider_width: int = 2
 
 
 class Colors:
@@ -52,6 +83,9 @@ class Colors:
         keep = "green"
         delete = "red"
         to_review = "yellow"
+        error = "red"
+        warning = "orange"
+        normal = "gray"
 
     class Text:
         light = "#ffffff"
@@ -77,6 +111,7 @@ class Colors:
 COLORS: Colors = Colors()
 DIMENSIONS: Dimensions = Dimensions()
 DIRECTION: Direction = Direction()
+FONTS: Font
 
 
 class KeyBind:
@@ -108,13 +143,7 @@ class Button(ctk.CTkButton):
 
 
 class LabelAndValue(ctk.CTkFrame):
-    def __init__(
-        self,
-        parent: Any,
-        label: str,
-        value: str,
-        **kwargs,
-    ):
+    def __init__(self, parent: Any, label: str, value: str, **kwargs):
         super().__init__(parent, **kwargs)
 
         self.label: ctk.CTkLabel = ctk.CTkLabel(self, text=label)
@@ -140,8 +169,6 @@ class ImageGallery(ctk.CTkFrame):
     ):
         super().__init__(parent, **kwargs)
 
-        self.pack(fill=ctk.X)
-
         self.images: list[str] = []
         self.max_image_side_length = image_size
         self.row_index = 0
@@ -155,11 +182,10 @@ class ImageGallery(ctk.CTkFrame):
         self.title_frame: ctk.CTkFrame = ctk.CTkFrame(self)
         self.title_frame.pack(fill=ctk.X)
 
-        title_font = ctk.CTkFont(weight="bold", size=16)
         self.title_name: ctk.CTkLabel = ctk.CTkLabel(
             self.title_frame,
             text=title,
-            font=title_font,
+            font=FONTS.style.title,
             anchor="w",
             justify="left",
         )
@@ -168,7 +194,7 @@ class ImageGallery(ctk.CTkFrame):
         self.title_total_images: ctk.CTkLabel = ctk.CTkLabel(
             self.title_frame,
             text="0",
-            font=title_font,
+            font=FONTS.style.subtitle,
             anchor="w",
             justify="right",
         )
@@ -215,7 +241,7 @@ class ImageGallery(ctk.CTkFrame):
             image_view,
             text=str(len(self.images)),
             text_color="white",
-            font=ctk.CTkFont(size=10, weight="bold"),
+            font=FONTS.style.subtitle,
             corner_radius=12,
             height=0,
         )
@@ -250,8 +276,9 @@ class MainPopup(ctk.CTkFrame):
         self.app = parent
         self.name: str = name
 
-        font = ctk.CTkFont(weight="bold", size=16)
-        self.title: ctk.CTkLabel = ctk.CTkLabel(self, text=self.name, font=font)
+        self.title: ctk.CTkLabel = ctk.CTkLabel(
+            self, text=self.name, font=FONTS.style.title
+        )
         self.title.pack(fill=ctk.BOTH)
 
         ctk.CTkFrame(
@@ -363,9 +390,8 @@ class HelpBox(MainPopup):
 
         app.replace_keymaps(lambda: ())
 
-        font = ctk.CTkFont(slant="italic", size=12)
         ctk.CTkLabel(
-            self, text="Press ? to close this help box", font=font, height=0
+            self, text="Press ? to close this help box", font=FONTS.style.hint, height=0
         ).pack(fill=ctk.X, after=self.title)
 
         self.scrollable_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
@@ -401,9 +427,8 @@ class SummaryScreen(ctk.CTkFrame):
 
         self.image_size = 128
 
-        page_title_font = ctk.CTkFont(weight="bold", size=20)
         self.page_title_label = ctk.CTkLabel(
-            self, text="Summary Page", font=page_title_font
+            self, text="Summary Page", font=FONTS.style.title
         )
         self.page_title_label.pack(fill=ctk.X)
 
@@ -466,12 +491,15 @@ class SummaryScreen(ctk.CTkFrame):
             COLORS.status.keep,
             image_size=self.image_size,
         )
+        self.images_gallery_to_keep.pack(fill=ctk.X)
+
         self.images_gallery_to_dump: ImageGallery = ImageGallery(
             self.scrollable_frame_for_galleries,
             "To Dump",
             COLORS.status.delete,
             image_size=self.image_size,
         )
+        self.images_gallery_to_dump.pack(fill=ctk.X, pady=(8, 0))
 
         self.completion_pop_up: PositiveNegativePopup | None = None
 
@@ -499,14 +527,24 @@ class SummaryScreen(ctk.CTkFrame):
 
     def prompt_for_completion(self, event):
         if not self._is_filtering_by_intended_action_completed():
-            print(
-                "Cannot prompt for completion: Filteting by intended action is not completed yet"
+            self.start_screen.app.notify(
+                "Cannot prompt for completion: Filteting by intended action has not completed yet\nPlease wait",
+                ntfM.Templates.warning,
             )
             return
 
         if self.completion_pop_up:
             print("A completion pop up already exist")
             return
+
+        def on_delete_failure(err_msg: str):
+            self.start_screen.app.notify(err_msg, ntfM.Templates.error)
+            print(err_msg)
+            self.update()
+
+        def notify(msg: str, template: ntfM.Templates):
+            self.start_screen.app.notify(msg, template)
+            self.update()
 
         def on_close():
             print("Close")
@@ -520,16 +558,13 @@ class SummaryScreen(ctk.CTkFrame):
         def on_proceed():
             print("Proceed")
 
+            notify("Proceeding ahead", ntfM.Templates.normal)
+
             self.start_screen.app.replace_keymaps(
                 lambda: print("Removing keymaps due to processing of prompt completion")
             )
             print(f"Manage RAWs: {self.manage_raws}")
 
-            print("JPEG to keep:")
-            for image in self.images_gallery_to_keep.images:
-                print(image)
-
-            print("JPEG to dump:")
             for image in self.images_gallery_to_dump.images:
                 print(image)
                 get_jpeg_filename_result: fsM.FileName | None = (
@@ -537,7 +572,10 @@ class SummaryScreen(ctk.CTkFrame):
                 )
 
                 if get_jpeg_filename_result is None:
-                    print("Error: Getting filename for jpeg unexpectedly returned None")
+                    notify(
+                        "Error: Getting filename for jpeg unexpectedly returned None",
+                        ntfM.Templates.error,
+                    )
                     continue
 
                 jpeg_filename: fsM.FileName = get_jpeg_filename_result
@@ -547,8 +585,11 @@ class SummaryScreen(ctk.CTkFrame):
                 print(jpeg_filename.getFullName())
 
                 def deleteJPEG() -> bool:
-                    if not fsM.deleteFileFromAbsPath(image):
-                        print(f"Error: Cannot delete jpeg: \t{image}")
+                    if not fsM.deleteFileFromAbsPath(image, on_delete_failure):
+                        notify(
+                            f"Error: Cannot delete jpeg: \t{image}",
+                            ntfM.Templates.error,
+                        )
                         return False
                     return True
 
@@ -558,8 +599,13 @@ class SummaryScreen(ctk.CTkFrame):
                     )
                     print(abspath_cachefile)
 
-                    if not fsM.deleteFileFromAbsPath(abspath_cachefile):
-                        print(f"Error: Cannot delete hashfile: \t{abspath_cachefile}")
+                    if not fsM.deleteFileFromAbsPath(
+                        abspath_cachefile, on_delete_failure
+                    ):
+                        notify(
+                            f"Error: Cannot delete hashfile: \t{abspath_cachefile}",
+                            ntfM.Templates.error,
+                        )
                         return False
 
                     return True
@@ -578,9 +624,12 @@ class SummaryScreen(ctk.CTkFrame):
 
                     print(f"Found matching raw file:\t{raw_filename} for image {image}")
 
-                    if not fsM.deleteFileFromAbsPath(abspath_actual_raw_file):
-                        print(
-                            f"Error: Cannot delete raw file: \t{abspath_actual_raw_file}"
+                    if not fsM.deleteFileFromAbsPath(
+                        abspath_actual_raw_file, on_delete_failure
+                    ):
+                        notify(
+                            f"Error: Cannot delete raw file: \t{abspath_actual_raw_file}",
+                            ntfM.Templates.error,
                         )
                         return False
 
@@ -591,13 +640,18 @@ class SummaryScreen(ctk.CTkFrame):
                 if not deleteJPEG():
                     continue
 
+                gc.collect()
+
                 if not deleteHashFile():
                     continue
 
+                gc.collect()
+
                 if self.manage_raws:
                     if self.start_screen.selection_raw is None:
-                        print(
-                            "Error: self.start_screen.selection_raw is unexpectedly None"
+                        notify(
+                            "Error: self.start_screen.selection_raw is unexpectedly None",
+                            ntfM.Templates.error,
                         )
                         break
                     if not deleteRaw(self.start_screen.selection_raw):
@@ -1187,8 +1241,6 @@ class StatusRibbon(ctk.CTkFrame):
         )
         self.app = app
 
-        self.pack(fill=ctk.X, ipadx=24)
-
         self.phase_section = self.PhaseSection(self)
         self.file_counter_section = self.FileCounterSection(self)
         self.filepath_section = self.FilepathSection(self)
@@ -1203,13 +1255,11 @@ class StatusRibbon(ctk.CTkFrame):
             side: str = ctk.LEFT,
             **kwargs,
         ):
-            self.font = ctk.CTkFont(size=DIMENSIONS.status_ribbon.label.font_size)
-
             super().__init__(
                 parent,
                 text="",
                 text_color=text_color if text_color else COLORS.text.light_faded,
-                font=self.font,
+                font=FONTS.style.status_ribbon_label,
                 **kwargs,
             )
             self.pack(side=side, ipadx=4)
@@ -1222,7 +1272,7 @@ class StatusRibbon(ctk.CTkFrame):
             self, parent: ctk.CTkFrame, text_color: str | None = None, **kwargs
         ):
             super().__init__(parent, text_color, **kwargs)
-            self.font.configure(weight="bold")
+            self.configure(font=FONTS.style.status_ribbon_title)
 
     class BaseSeperator(ctk.CTkLabel):
         def __init__(self, parent: Any, **kwargs):
@@ -1310,6 +1360,9 @@ class StatusRibbon(ctk.CTkFrame):
 class MainApp(ctk.CTk):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        global FONTS
+        FONTS = Font()
+
         self.live_event: Event = Event()
 
         self.attributes("-fullscreen", True)
@@ -1323,17 +1376,44 @@ class MainApp(ctk.CTk):
         self.working_area: ctk.CTkFrame = ctk.CTkFrame(self)
         self.working_area.pack(fill=ctk.BOTH, expand=True)
 
+        self.seperator: ctk.CTkFrame = ctk.CTkFrame(
+            self, fg_color=COLORS.palette.primary, height=2
+        )
+        self.seperator.pack(fill=ctk.X)
+
         self.status_ribbon: StatusRibbon = StatusRibbon(self)
+        self.status_ribbon.pack(fill=ctk.X, ipadx=24, after=self.seperator)
+
+        self.reserved_keybindings: list[KeyBind] = []
 
         self.kb_help: KeyBind = KeyBind(
             "<question>", self.on_toggle_help, "Show help box"
         )
-        self.bind(self.kb_help.keymap, self.kb_help.action)
+        self.add_reversed_keybinding(self.kb_help)
         self.help_dialog: HelpBox | None = None
 
-        self.bind("<Key>", self.unmapped_key)
+        self.ntf_panel: ntfM.NotificationPanel
+        self.kb_dismiss_ntf_panel: KeyBind = KeyBind(
+            "<Alt-n>",
+            lambda event: self.ntf_panel.toggle(),
+            "Dismiss notification panel",
+        )
+        self.ntf_panel = ntfM.NotificationPanel(self.working_area, self)
+        self.add_reversed_keybinding(self.kb_dismiss_ntf_panel)
 
+        self.bind("<Key>", self.unmapped_key)
         self.reset()
+
+    def add_reversed_keybinding(self, kb: KeyBind):
+        self.reserved_keybindings.append(kb)
+        self.bind(kb.keymap, kb.action)
+
+    def notify(self, message: str, template: ntfM.Templates):
+        Thread(
+            target=self.ntf_panel.create_notification,
+            args=(random.randint(1, 20000), message, template),
+            daemon=True,
+        ).start()
 
     def unmapped_key(self, event):
         char = event.char
@@ -1378,15 +1458,24 @@ class MainApp(ctk.CTk):
 
     def start(self):
         if self.home_screen is None:
-            print("Error: Cannot start, home_screen was unexpectedly None")
+            self.notify(
+                "Error: Cannot start, home_screen was unexpectedly None",
+                ntfM.Templates.warning,
+            )
             return
 
         if not self.home_screen.are_directories_and_filepaths_valid():
-            print("Directories or filepaths were not valid")
+            self.notify(
+                "Directories or filepaths were not valid",
+                ntfM.Templates.warning,
+            )
             return
 
         if self.home_screen.directory_prompt_jpeg.selection is None:
-            print("Selection for jpegs was not set")
+            self.notify(
+                "Selection for jpegs was not set",
+                ntfM.Templates.warning,
+            )
             return
 
         self.start_screen = StartScreen(
@@ -1400,13 +1489,19 @@ class MainApp(ctk.CTk):
 
     def show_start_screen(self) -> bool:
         if self.home_screen is None:
-            print("Error: Cannot show start screen, home_screen was unexpectedly None")
+            self.notify(
+                "Error: Cannot show start screen, home_screen was unexpectedly None",
+                ntfM.Templates.error,
+            )
             return False
 
         self.home_screen.pack_forget()
 
         if not self.start_screen:
-            print("Error: Cannot show start screen. start_screen is None")
+            self.notify(
+                "Error: Cannot show start screen. start_screen is None",
+                ntfM.Templates.error,
+            )
             return False
 
         self.start_screen.pack(expand=True, fill=ctk.BOTH)
@@ -1419,7 +1514,10 @@ class MainApp(ctk.CTk):
             self.start_screen.pack_forget()
 
         if self.home_screen is None:
-            print("Error: Cannot show home screen, home_screen was unexpectedly None")
+            self.notify(
+                "Error: Cannot show home screen, home_screen was unexpectedly None",
+                ntfM.Templates.error,
+            )
             return
 
         self.home_screen.pack(expand=True, fill=ctk.BOTH)
@@ -1449,14 +1547,16 @@ class MainApp(ctk.CTk):
 
     def bind_key(self, kb: KeyBind) -> bool:
         if self.bounded_keys.get(kb.keymap):
-            print(
-                f"Error: Found conflicting keys {kb.keymap}, that performs action: {kb.getDesc()}"
+            self.notify(
+                f"Error: Found conflicting keys {kb.keymap}, that performs action: {kb.getDesc()}",
+                ntfM.Templates.error,
             )
             return False
 
-        if kb.keymap == self.kb_help.keymap:
-            print(
-                f"Error: Cannot override the help keymapping, conflicting key {kb.keymap} for action: {kb.getDesc()}"
+        if kb.keymap in self.reserved_keybindings:
+            self.notify(
+                f"Error: Cannot override reserved keymapping, conflicting key {kb.keymap} for action: {kb.getDesc()}",
+                ntfM.Templates.error,
             )
             return False
 
@@ -1549,19 +1649,21 @@ class HomeScreen(ctk.CTkFrame):
     def __init__(
         self,
         parent: ctk.CTkFrame,
-        mainApp: MainApp,
+        app: MainApp,
         **kwargs,
     ):
         super().__init__(parent, **kwargs)
 
-        self.app: MainApp = mainApp
+        self.app: MainApp = app
 
-        self.set_directories_label = ctk.CTkLabel(self, text="Set directories/folder")
+        self.set_directories_label = ctk.CTkLabel(
+            self, text="Set directories/folder", font=FONTS.style.subtitle
+        )
         self.set_directories_label.pack(pady=8)
 
         self.directory_prompt_jpeg: DirectoryPromptItem = DirectoryPromptItem(
             self,
-            title="Choose pictures directory/folder",
+            title="Choose pictures directory/folder (jpegs)",
             file_formats=fsM.IMAGE_EXTENSIONS,
             on_success_event=lambda: self.on_success_directory_prompt_jpeg(),
             on_failure_event=lambda: self.on_failure_directory_prompt_jpeg(),
@@ -1612,29 +1714,23 @@ class HomeScreen(ctk.CTkFrame):
         self.container.grid_columnconfigure(0, weight=1)
         self.container.pack(expand=True)
 
-        start_font = ctk.CTkFont(weight="bold", size=16)
         self.btn_start = Button(
-            self.container, text="START", command=lambda: self.start(), font=start_font
+            self.container,
+            text="START",
+            command=lambda: self.start(),
+            font=FONTS.style.big_btn_action,
         )
         self.btn_start.grid(row=0, column=0, ipadx=40, ipady=12)
-
-        self.log_label = ctk.CTkLabel(self.container, text="", text_color="red")
 
     def start(self):
         if not self.are_directories_and_filepaths_valid():
             return
 
-        self.set_log("")
         self.app.start()
         self.pack_forget()
 
-    def set_log(self, text: str):
-        print(text)
-        self.after_idle(lambda: self.log_label.configure(text=text))
-        if not text:
-            self.log_label.pack_forget()
-        else:
-            self.log_label.grid(row=1, column=0, ipadx=40, ipady=12)
+    def notify(self, text: str, template: ntfM.Templates):
+        self.app.notify(text, template)
 
     def init_keymaps(self):
         # escape keys
@@ -1684,11 +1780,13 @@ class HomeScreen(ctk.CTkFrame):
 
     def are_directories_and_filepaths_valid(self) -> bool:
         if self.directory_prompt_jpeg.selection is None:
-            self.set_log("Directory for JPEG's selection was null")
+            self.notify("Directory for jpeg's was not selected", ntfM.Templates.warning)
             return False
 
         if not self.directory_prompt_jpeg.selection.abspath_files:
-            self.set_log("No jpeg files in the selected directory")
+            self.notify(
+                "No jpeg files in the selected directory", ntfM.Templates.warning
+            )
             return False
 
         if not self.expect_manage_raws():
@@ -1701,20 +1799,18 @@ class HomeScreen(ctk.CTkFrame):
             ):
                 return True
 
-            self.set_log("Directory for raw files was invalid")
+            self.notify("Directory for raw files was invalid", ntfM.Templates.warning)
             return False
 
         if self.directory_prompt_raw.selection is None:
-            self.set_log(
-                "Error: Raw selection was unexpectedly Null\nYou may have not set the RAW directory yet"
-            )
+            self.notify("Directory for raw's was not selected", ntfM.Templates.warning)
             return False
 
         if not self.directory_prompt_raw.selection.abspath_files:
-            self.set_log("No raw files in the selected directory")
+            self.notify(
+                "No raw files in the selected directory", ntfM.Templates.warning
+            )
             return False
-
-        self.set_log("")
 
         return True
 
@@ -1752,7 +1848,10 @@ def createImageFromAbspath(abspath: str):
         (sh.APP_WIDTH, sh.APP_HEIGHT),
         Image.Resampling.BOX,
     )
-    return img
+    thumb = img.copy()
+    img.close()
+    gc.collect()
+    return thumb
 
 
 def updateFG(label: ctk.CTkLabel, fg_color: str) -> bool:

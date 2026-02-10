@@ -2,9 +2,10 @@
 
 ## Universal/App-wide scope
 
-| Key | Action                                        |
-| --- | --------------------------------------------- |
-| ?   | Open a help box to view available keybindings |
+| Key   | Action                                                   |
+| ----- | -------------------------------------------------------- |
+| ?     | Open a help box to view available keybindings            |
+| alt+n | Toggle opening and closing of the the notification panel |
 
 ## Home Screen
 

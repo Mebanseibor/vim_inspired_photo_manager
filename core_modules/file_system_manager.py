@@ -1,4 +1,7 @@
+import gc
 import os
+import time
+from typing import Callable
 
 import xxhash
 
@@ -224,14 +227,22 @@ def getPartsOfNameFromAbsPath(abspath: str) -> FileName | None:
     return FileName(name, extension)
 
 
-def deleteFileFromAbsPath(abspath: str) -> bool:
-    if not os.path.exists(abspath):
-        print(f"Error: Not a valid path:\t{abspath}")
+def deleteFileFromAbsPath(
+    abspath: str, on_failure: Callable[[str], None], max_retries: int = 5
+) -> bool:
+    if not os.path.exists(abspath) or not os.path.isfile(abspath):
+        on_failure(f"Error: Invalid file: {abspath}")
         return False
 
-    if not os.path.isfile(abspath):
-        print(f"Error: Not a file name:\t{abspath}")
-        return False
-
-    os.remove(abspath)
-    return True
+    for attempt in range(max_retries):
+        try:
+            gc.collect()
+            os.remove(abspath)
+            return True
+        except OSError as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.25)
+            else:
+                on_failure(f"Error deleting {abspath}: {e}")
+                return False
+    return False
