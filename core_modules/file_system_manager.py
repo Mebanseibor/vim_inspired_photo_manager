@@ -1,4 +1,5 @@
 import gc
+import stat
 import os
 import time
 from typing import Callable
@@ -237,6 +238,7 @@ def deleteFileFromAbsPath(
     for attempt in range(max_retries):
         try:
             gc.collect()
+            os.chmod(abspath, stat.S_IWRITE)
             os.remove(abspath)
             return True
         except OSError as e:

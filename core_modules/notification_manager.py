@@ -162,7 +162,9 @@ class NotificationPanel(ctk.CTkFrame):
         self.ntf: dict[int, Notification] = {}
         self.screen_ratio_width: float = 0.2
 
-        self.ctn_header: ctk.CTkFrame = ctk.CTkFrame(self, height=0)
+        self.ctn_header: ctk.CTkFrame = ctk.CTkFrame(
+            self, height=0, fg_color=gui.COLORS.background.darker
+        )
         self.ctn_header.place(relx=0.5, relwidth=1.0, anchor=ctk.N)
 
         self.title: ctk.CTkLabel = ctk.CTkLabel(
@@ -337,7 +339,11 @@ class Notification(ctk.CTkFrame):
         highlighter_color: str | None = None,
         **kwargs,
     ):
-        super().__init__(master, **kwargs)
+        super().__init__(
+            master,
+            fg_color=gui.COLORS.background.darker,
+            **kwargs,
+        )
         self.id: int = id
         self.message: str = str(message)
         self.padding_horizontal = 12
@@ -368,7 +374,7 @@ class Notification(ctk.CTkFrame):
             self.ctn_content,
             text=self.message,
             corner_radius=8,
-            fg_color="#666666",
+            fg_color=gui.COLORS.background.base,
             anchor="w",
             justify="left",
         )

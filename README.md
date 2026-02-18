@@ -21,7 +21,7 @@ _Inspired by_
 <br/>
 <br/>
 
-![Demo](./docs/assets/demo.gif)
+![Demo](./docs/assets/demo.gif?v=0.1.1)
 
 </div>
 

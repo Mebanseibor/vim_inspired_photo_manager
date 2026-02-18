@@ -4,6 +4,7 @@ import gc
 import os
 import random
 import subprocess
+from enum import Enum
 from threading import Event, Thread
 from tkinter import IntVar, filedialog
 from typing import Any, Callable
@@ -44,6 +45,7 @@ class Font:
             self.subtitle: ctk.CTkFont = ctk.CTkFont(size=12)
             self.hint: ctk.CTkFont = ctk.CTkFont(slant="italic", size=12)
             self.big_btn_action: ctk.CTkFont = ctk.CTkFont(weight="bold", size=16)
+            self.big_action_text: ctk.CTkFont = ctk.CTkFont(weight="bold", size=32)
 
 
 class Direction:
@@ -79,11 +81,11 @@ class Colors:
         self.palette = self.Palette()
 
     class Status:
-        default = "white"
-        keep = "green"
-        delete = "red"
+        default = "#c0caf5"
+        keep = "#9ECE6A"
+        delete = "#F7768E"
         to_review = "yellow"
-        error = "red"
+        error = "#f7768e"
         warning = "orange"
         normal = "gray"
 
@@ -96,9 +98,9 @@ class Colors:
         dark = "#111111"
 
     class Background:
-        base = "#333333"
-        lighter = "#444444"
-        darker = "#2a2a2a"
+        base = "#24283B"
+        lighter = "#565f89"
+        darker = "#1A1B26"
 
     class Palette:
         secondary = "#bb9af7"
@@ -112,6 +114,21 @@ COLORS: Colors = Colors()
 DIMENSIONS: Dimensions = Dimensions()
 DIRECTION: Direction = Direction()
 FONTS: Font
+
+
+class Phase:
+    def __init__(self, name: str, fg_color: str, dark_text: bool = False):
+        self.name: str = name
+        self.fg_color: str = fg_color
+        self.text_color: str = (
+            COLORS.text.dark_faded if dark_text else COLORS.text.light
+        )
+
+
+class Phases(Enum):
+    home_screen = Phase("Home Screen", "#565F89")
+    start_screen = Phase("Start Screen", "#565F89")
+    inspect = Phase("Inspect", "#ff9e64")
 
 
 class KeyBind:
@@ -144,10 +161,10 @@ class Button(ctk.CTkButton):
 
 class LabelAndValue(ctk.CTkFrame):
     def __init__(self, parent: Any, label: str, value: str, **kwargs):
-        super().__init__(parent, **kwargs)
+        super().__init__(parent, fg_color=COLORS.background.darker, **kwargs)
 
         self.label: ctk.CTkLabel = ctk.CTkLabel(self, text=label)
-        self.label.pack(side="left")
+        self.label.pack(side="left", padx=4)
 
         self.value: ctk.CTkLabel = ctk.CTkLabel(self, text=value)
         self.value.pack(padx=(10, 0), anchor="w")
@@ -167,7 +184,7 @@ class ImageGallery(ctk.CTkFrame):
         image_size: int,
         **kwargs,
     ):
-        super().__init__(parent, **kwargs)
+        super().__init__(parent, fg_color=COLORS.background.darker, **kwargs)
 
         self.images: list[str] = []
         self.max_image_side_length = image_size
@@ -179,7 +196,10 @@ class ImageGallery(ctk.CTkFrame):
         )
         self.indicator.pack(fill=ctk.Y, side="left")
 
-        self.title_frame: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.title_frame: ctk.CTkFrame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS.background.darker,
+        )
         self.title_frame.pack(fill=ctk.X)
 
         self.title_name: ctk.CTkLabel = ctk.CTkLabel(
@@ -188,6 +208,7 @@ class ImageGallery(ctk.CTkFrame):
             font=FONTS.style.title,
             anchor="w",
             justify="left",
+            fg_color=COLORS.background.darker,
         )
         self.title_name.pack(fill=ctk.X, side="left")
 
@@ -197,6 +218,7 @@ class ImageGallery(ctk.CTkFrame):
             font=FONTS.style.subtitle,
             anchor="w",
             justify="right",
+            fg_color=COLORS.background.darker,
         )
         self.title_total_images.pack(fill=ctk.X, after=self.title_name, side="right")
 
@@ -204,7 +226,11 @@ class ImageGallery(ctk.CTkFrame):
             sh.APP_WIDTH if sh.APP_WIDTH else 800 - self.indicator.winfo_width()
         )
         self.max_column = int(self.max_gallery_width / self.max_image_side_length)
-        self.images_container: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.images_container: ctk.CTkFrame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS.background.darker,
+        )
+
         self.images_container.pack(expand=True, fill=ctk.BOTH)
 
     def clear_gallery(self):
@@ -272,18 +298,33 @@ class MainPopup(ctk.CTkFrame):
         name: str = "",
         **kwargs,
     ):
-        super().__init__(parent, corner_radius=16, **kwargs)
+        border_width = 2
+        fg_color = COLORS.background.darker
+        border_color = COLORS.palette.primary
+        super().__init__(
+            parent,
+            corner_radius=8,
+            fg_color=fg_color,
+            border_width=border_width,
+            border_color=border_color,
+            **kwargs,
+        )
         self.app = parent
         self.name: str = name
 
+        self.content: ctk.CTkFrame = ctk.CTkFrame(self, fg_color=fg_color)
+        self.content.pack(
+            fill=ctk.BOTH, expand=True, padx=border_width, pady=border_width
+        )
+
         self.title: ctk.CTkLabel = ctk.CTkLabel(
-            self, text=self.name, font=FONTS.style.title
+            self.content, text=self.name, font=FONTS.style.title
         )
         self.title.pack(fill=ctk.BOTH)
 
         ctk.CTkFrame(
-            self,
-            fg_color=COLORS.palette.primary,
+            self.content,
+            fg_color=border_color,
             height=DIMENSIONS.general.horizontal_divider_height,
         ).pack(fill=ctk.X)
 
@@ -327,7 +368,7 @@ class PositiveNegativePopup(MainPopup):
         super().__init__(parent, name=window_title, **kwargs)
 
         self.prompt_container: ctk.CTkFrame = ctk.CTkFrame(
-            self, fg_color=COLORS.background.lighter
+            self.content, fg_color=COLORS.background.base
         )
         self.prompt_container.grid_columnconfigure(index=[0, 1], weight=1)
         self.prompt_container.pack(expand=True, fill=ctk.BOTH)
@@ -391,14 +432,19 @@ class HelpBox(MainPopup):
         app.replace_keymaps(lambda: ())
 
         ctk.CTkLabel(
-            self, text="Press ? to close this help box", font=FONTS.style.hint, height=0
+            self.content,
+            text="Press ? to close this help box",
+            font=FONTS.style.hint,
+            height=0,
         ).pack(fill=ctk.X, after=self.title)
 
-        self.scrollable_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scrollable_frame = ctk.CTkScrollableFrame(
+            self.content, fg_color=COLORS.background.base
+        )
         self.scrollable_frame.pack(fill=ctk.BOTH, expand=True)
 
         self.container: ctk.CTkFrame = ctk.CTkFrame(
-            self.scrollable_frame, fg_color=COLORS.background.lighter
+            self.scrollable_frame, fg_color=COLORS.background.base
         )
         self.container.pack(fill=ctk.BOTH, expand=True, padx=24, pady=8)
 
@@ -418,7 +464,7 @@ class SummaryScreen(ctk.CTkFrame):
         start_screen: StartScreen,
         **kwargs,
     ):
-        super().__init__(parent, **kwargs)
+        super().__init__(parent, fg_color=COLORS.background.base, **kwargs)
         self.start_screen: StartScreen = start_screen
         self._filtering_by_intended_action_completed: bool = True
 
@@ -432,8 +478,10 @@ class SummaryScreen(ctk.CTkFrame):
         )
         self.page_title_label.pack(fill=ctk.X)
 
-        self.details_container: ctk.CTkFrame = ctk.CTkFrame(self)
-        self.details_container.pack(fill=ctk.X, padx=4)
+        self.details_container: ctk.CTkFrame = ctk.CTkFrame(
+            self, fg_color=COLORS.background.darker, corner_radius=8
+        )
+        self.details_container.pack(fill=ctk.X, ipadx=8, ipady=8, padx=8, pady=8)
 
         self.summary_details_jpeg_directory: LabelAndValue = LabelAndValue(
             self.details_container,
@@ -479,7 +527,9 @@ class SummaryScreen(ctk.CTkFrame):
         self.summary_details_unmarked_images.pack(fill=ctk.X)
 
         # scrollable frame
-        self.scrollable_frame_for_galleries = ctk.CTkScrollableFrame(self)
+        self.scrollable_frame_for_galleries = ctk.CTkScrollableFrame(
+            self, fg_color=COLORS.background.darker
+        )
         self.scrollable_frame_for_galleries.pack(
             expand=True, fill=ctk.BOTH, padx=8, pady=8
         )
@@ -755,9 +805,14 @@ class StartScreen(ctk.CTkFrame):
         self.summary_screen.pack(expand=True, fill=ctk.BOTH)
 
         # components
-        self.image_highlight_l = ctk.CTkLabel(self.main_page, text="", height=8)
+        self.image_highlight_l = ctk.CTkLabel(
+            self.main_page, text="", height=8, fg_color=COLORS.status.default
+        )
         self.image_l = ctk.CTkLabel(
-            self.main_page, text="", fg_color=COLORS.background.base
+            self.main_page,
+            text="",
+            fg_color=COLORS.background.base,
+            font=FONTS.style.big_action_text,
         )
         self.raw_file_indicator = ctk.CTkLabel(self.image_l, text="")
 
@@ -886,7 +941,7 @@ class StartScreen(ctk.CTkFrame):
         return True
 
     def init(self):
-        self.image_l.configure(text="Loading Images", image="")
+        self.image_l.configure(text="LOADING IMAGES", image="")
         self.update_system_log_l("Loading Images")
         self.cacheHandler = cM.ImageItemCacheHandler(self.filepaths)
         self.update_system_log_l("Created cache handler")
@@ -976,7 +1031,7 @@ class StartScreen(ctk.CTkFrame):
         self.inspect_mode.enter()
 
     def on_exit_inspect_mode(self):
-        self.app.status_ribbon.phase_section.set_phase("Start Screen")
+        self.app.status_ribbon.phase_section.set_phase(Phases.start_screen)
 
         self.image_highlight_l.pack(expand=True, fill=ctk.X)
         self.image_l.pack(expand=True, fill=ctk.BOTH, after=self.image_highlight_l)
@@ -1040,12 +1095,14 @@ class InspectMode:
         self.canvas_manager.set_images(abspath_images)
 
     def enter(self):
-        self.app.status_ribbon.phase_section.set_phase("Inspect")
+        self.app.status_ribbon.phase_section.set_phase(Phases.inspect)
         self.app.replace_keymaps(self.init_keymaps)
         self.on_reset_view(None)
 
     def on_exit(self, event=None):
         self.canvas_manager.canvas.pack_forget()
+        for image in self.canvas_manager.images.values():
+            image.image.close()
         gc.collect()
         self._on_exit_action()
 
@@ -1262,10 +1319,13 @@ class StatusRibbon(ctk.CTkFrame):
                 font=FONTS.style.status_ribbon_label,
                 **kwargs,
             )
-            self.pack(side=side, ipadx=4)
+            self.pack(side=side, padx=2)
 
-        def set_text(self, text: str | int | float | None | bool):
+        def set_text(
+            self, text: str | int | float | None | bool, text_color: str | None = None
+        ):
             self.configure(text=str(text))
+            self.configure(text_color=text_color if text_color else COLORS.text.light)
 
     class Title(Label):
         def __init__(
@@ -1297,7 +1357,10 @@ class StatusRibbon(ctk.CTkFrame):
 
     class Section(ctk.CTkFrame):
         def __init__(
-            self, status_ribbon: StatusRibbon, fg_color=COLORS.background.base, **kwargs
+            self,
+            status_ribbon: StatusRibbon,
+            fg_color=COLORS.background.base,
+            **kwargs,
         ):
             super().__init__(
                 status_ribbon,
@@ -1315,19 +1378,22 @@ class StatusRibbon(ctk.CTkFrame):
 
     class PhaseSection(Section):
         def __init__(self, status_ribbon: StatusRibbon):
-            super().__init__(status_ribbon, fg_color=COLORS.palette.primary)
+            super().__init__(status_ribbon, fg_color=COLORS.palette.primary_lighter)
             self.title = status_ribbon.Title(self, text_color=COLORS.text.neutral_faded)
 
-        def set_phase(self, phase: str):
-            self.title.set_text(phase)
+        def set_phase(self, phase: Phases):
+            self.title.set_text(phase.value.name, phase.value.text_color)
+            self.configure(fg_color=phase.value.fg_color)
 
     class FilepathSection(Section):
         def __init__(self, status_ribbon: StatusRibbon):
-            super().__init__(status_ribbon, fg_color=COLORS.palette.secondary)
-            self.filepath = status_ribbon.Label(self, text_color=COLORS.text.dark_faded)
+            super().__init__(status_ribbon, fg_color=COLORS.background.lighter)
+
+            self.text_color = COLORS.text.light_faded
+            self.filepath = status_ribbon.Label(self, text_color=self.text_color)
 
         def set_filepath(self, filepath: str):
-            self.filepath.set_text(filepath)
+            self.filepath.set_text(filepath, self.text_color)
 
     class FileCounterSection(Section):
         def __init__(
@@ -1336,13 +1402,12 @@ class StatusRibbon(ctk.CTkFrame):
             start: int | None = None,
             maximum: int = 0,
         ):
-            super().__init__(status_ribbon, fg_color=COLORS.palette.secondary)
+            super().__init__(status_ribbon, fg_color=COLORS.background.lighter)
             self.counter: int | None = start
             self.maximum: int = maximum
 
-            self.counter_label = status_ribbon.Label(
-                self, text_color=COLORS.text.dark_faded
-            )
+            self.text_color = COLORS.text.light_faded
+            self.counter_label = status_ribbon.Label(self, text_color=self.text_color)
             self.error_message: str = "None"
 
         def set_counter(self, counter: int | None):
@@ -1351,7 +1416,7 @@ class StatusRibbon(ctk.CTkFrame):
                 f"{self.counter}/{self.maximum}" if counter else self.error_message
             )
 
-            self.counter_label.set_text(text)
+            self.counter_label.set_text(text, self.text_color)
 
         def set_max(self, maximum: int):
             self.maximum = maximum
@@ -1506,7 +1571,7 @@ class MainApp(ctk.CTk):
 
         self.start_screen.pack(expand=True, fill=ctk.BOTH)
         self.replace_keymaps(self.start_screen.init_keymaps)
-        self.status_ribbon.phase_section.set_phase("Start Screen")
+        self.status_ribbon.phase_section.set_phase(Phases.start_screen)
         return True
 
     def show_home_screen(self):
@@ -1524,7 +1589,7 @@ class MainApp(ctk.CTk):
 
         self.replace_keymaps(self.home_screen.init_keymaps)
 
-        self.status_ribbon.phase_section.set_phase("Home Screen")
+        self.status_ribbon.phase_section.set_phase(Phases.home_screen)
 
     def on_app_close(self, event):
         self.live_event.set()
@@ -1652,7 +1717,7 @@ class HomeScreen(ctk.CTkFrame):
         app: MainApp,
         **kwargs,
     ):
-        super().__init__(parent, **kwargs)
+        super().__init__(parent, fg_color=COLORS.background.base, **kwargs)
 
         self.app: MainApp = app
 
@@ -1670,7 +1735,9 @@ class HomeScreen(ctk.CTkFrame):
         )
         self.directory_prompt_jpeg.pack()
 
-        self.manage_raws_container: ctk.CTkFrame = ctk.CTkFrame(self)
+        self.manage_raws_container: ctk.CTkFrame = ctk.CTkFrame(
+            self, fg_color=COLORS.background.darker
+        )
 
         self.manage_raws_result: IntVar = IntVar(value=1)
         self.manage_raws_checkbox = ctk.CTkCheckBox(
@@ -1698,6 +1765,7 @@ class HomeScreen(ctk.CTkFrame):
             checkbox_width=16,
             checkbox_height=16,
             border_width=1,
+            bg_color=COLORS.background.darker,
         )
         self.directory_raw_in_same_directory.pack()
 
