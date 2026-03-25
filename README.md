@@ -45,6 +45,7 @@ _Inspired by_
 - Utilizes caching:
   - Saves processing time on subsequent processing of the same image
   - Cache utilization is independent of file relocation
+  - Adherence to [ACID](https://en.wikipedia.org/wiki/ACID) properties by using [sqlite3]()
 
 ---
 
@@ -67,6 +68,7 @@ _Inspired by_
   - pillow
   - customtkinter
   - xxhash
+  - sqlite3
 
 ### Steps
 

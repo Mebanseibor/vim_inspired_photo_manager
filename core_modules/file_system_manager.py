@@ -139,26 +139,6 @@ def hashFile(abspath_file: str, salt: str):
     return hasher.hexdigest()
 
 
-def promptPath(
-    text: str | None, prompt_till_valid: bool = False, quit_command: str | None = None
-) -> str | None:
-    quit_command_message = f" (To quit, enter {quit_command})" if quit_command else ""
-    while True:
-        prompt_text = text if text else f"Enter path{quit_command_message}:"
-        print(prompt_text)
-        path = input().strip()
-
-        if quit_command and path == quit_command:
-            return None
-
-        if not prompt_till_valid:
-            return path
-
-        abspath = os.path.abspath(path)
-        if isDirValid(abspath):
-            return abspath
-
-
 def getFullNameFromAbspath(
     abspath: str, lowercase_extension: bool = False
 ) -> str | None:

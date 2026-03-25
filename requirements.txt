@@ -2,3 +2,4 @@ numpy
 Pillow
 customtkinter
 xxhash
+sqlite3

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import pickle
+import sqlite3
 from abc import ABC, abstractmethod
 from threading import Lock, Thread
 from typing import Callable
@@ -11,7 +11,7 @@ from PIL import Image
 from core_modules import file_system_manager as fsM
 from core_modules import gui_manager as guiM
 
-CACHE_FOLDER = "cache"
+CACHE_DATABASE_NAME = "cache.db"
 CACHE_HANDLER_WINDOW_SIZE = 8
 
 
@@ -331,6 +331,7 @@ class ImageItemCacheHandler:
         self.actual_window_size_right: int = 0
         self.head_heap: ImageItemCacheHeapHead = ImageItemCacheHeapHead(self)
         self.tail_heap: ImageItemCacheHeapTail = ImageItemCacheHeapTail(self)
+        init_cache_db()
 
         for i in range(min(CACHE_HANDLER_WINDOW_SIZE + 1, len(self.abspaths_images))):
             cacheItem = ImageCacheItem(self.abspaths_images[i])
@@ -584,45 +585,59 @@ class ImageItemCacheHandler:
         return self.curr.image_item.highlight_color
 
 
-def cacheImage(img_obj: guiM.FSItemGUIHandler, expect_no_clash: bool = False) -> bool:
-    if not img_obj.fs_item.file_hash:
+def init_cache_db(db_name: str = CACHE_DATABASE_NAME):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute("""CREATE TABLE IF NOT EXISTS image_cache 
+                      (file_hash TEXT PRIMARY KEY, data BLOB)""")
+
+
+def cacheImage(img_obj: guiM.FSItemGUIHandler, db_name: str = CACHE_DATABASE_NAME):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+
+    data_blob = pickle.dumps(img_obj)
+
+    try:
+        cursor.execute(
+            "INSERT OR REPLACE INTO image_cache (file_hash, data) VALUES (?, ?)",
+            (img_obj.fs_item.file_hash, data_blob),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
         return False
-
-    abspath_cache_folder = os.path.abspath(CACHE_FOLDER)
-
-    abspath_cache_obj = os.path.abspath(
-        os.path.join(abspath_cache_folder, img_obj.fs_item.file_hash)
-    )
-
-    if expect_no_clash and os.path.exists(abspath_cache_obj):
-        return False
-
-    with open(abspath_cache_obj, "wb") as file:
-        pickle.dump(img_obj, file)
+    finally:
+        conn.close()
 
     return True
 
 
-def isImageCached(image_hash: str) -> bool:
-    abspath_cache_folder = os.path.join(CACHE_FOLDER)
+def isImageCached(image_hash: str, db_name: str = CACHE_DATABASE_NAME) -> bool:
+    with sqlite3.connect(db_name) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM image_cache WHERE file_hash = ? LIMIT 1", (image_hash,)
+        )
+        return cursor.fetchone() is not None
 
-    for path_file in os.listdir(abspath_cache_folder):
-        if path_file == image_hash:
-            return True
-    return False
 
-
-def getCachedImage(image_hash: str) -> guiM.FSItemGUIHandler | None:
-    abspath_cache = os.path.abspath(CACHE_FOLDER)
-    abspath_cached_image = os.path.join(abspath_cache, image_hash)
+def getCachedImage(
+    image_hash: str, db_name: str = CACHE_DATABASE_NAME
+) -> guiM.FSItemGUIHandler | None:
     try:
-        with open(abspath_cached_image, "rb") as file:
-            imgObj = pickle.load(file)
-            return imgObj
-    except (pickle.UnpicklingError, EOFError):
+        with sqlite3.connect(db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT data FROM image_cache WHERE file_hash = ?", (image_hash,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                return pickle.loads(row[0])
+    except (sqlite3.Error, pickle.UnpicklingError, EOFError):
         return None
-    except OSError:
-        return None
+
+    return None
 
 
 def utilize_cache(abspath: str) -> guiM.FSItemGUIHandler | None:
@@ -637,7 +652,7 @@ def utilize_cache(abspath: str) -> guiM.FSItemGUIHandler | None:
     if not isImageCached(image_hash):
         return None
 
-    print(f"Getting cached image:\t{abspath}")
+    print(f"Getting cached image from DB:\t{abspath}")
     return getCachedImage(image_hash)
 
 
@@ -656,3 +671,35 @@ def cacheImageAtAbspathIfNotCached(
             print(f"Error: Cannot cache image {abspath_fs_item}")
             return None
     return imgObj
+
+
+def deleteCachedImage(image_hash: str, db_name=CACHE_DATABASE_NAME) -> bool:
+    try:
+        with sqlite3.connect(db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM image_cache WHERE file_hash = ?", (image_hash,))
+
+            if cursor.rowcount == 0:
+                print(f"No cache found for hash: {image_hash}")
+                return False
+
+            conn.commit()
+            print(f"Successfully deleted cache for hash: {image_hash}")
+            return True
+
+    except sqlite3.Error as e:
+        print(f"Database error while deleting hash {image_hash}: {e}")
+        return False
+
+
+def perform_vacuuming(db_name="cache.db"):
+    try:
+        with sqlite3.connect(db_name, isolation_level=None) as conn:
+            cursor = conn.cursor()
+
+            print(f"Vacuuming {db_name}...")
+            cursor.execute("VACUUM")
+
+            print("Vacuum complete.")
+    except sqlite3.Error as e:
+        print(f"Error Vacuuming: {e}")

@@ -643,17 +643,12 @@ class SummaryScreen(ctk.CTkFrame):
                         return False
                     return True
 
-                def deleteHashFile() -> bool:
-                    abspath_cachefile = os.path.abspath(
-                        os.path.join(cM.CACHE_FOLDER, image_hash)
-                    )
-                    print(abspath_cachefile)
+                def deleteHashFile(image_hash: str) -> bool:
+                    success = cM.deleteCachedImage(image_hash)
 
-                    if not fsM.deleteFileFromAbsPath(
-                        abspath_cachefile, on_delete_failure
-                    ):
+                    if not success:
                         notify(
-                            f"Error: Cannot delete hashfile: \t{abspath_cachefile}",
+                            f"Error: Cannot delete hash from database: \t{image_hash}",
                             ntfM.Templates.error,
                         )
                         return False
@@ -692,7 +687,7 @@ class SummaryScreen(ctk.CTkFrame):
 
                 gc.collect()
 
-                if not deleteHashFile():
+                if not deleteHashFile(image_hash):
                     continue
 
                 gc.collect()
@@ -707,6 +702,7 @@ class SummaryScreen(ctk.CTkFrame):
                     if not deleteRaw(self.start_screen.selection_raw):
                         continue
 
+            cM.perform_vacuuming()
             on_close()
             self.after_idle(self.start_screen.app.reset)
 
@@ -1752,7 +1748,7 @@ class HomeScreen(ctk.CTkFrame):
         self.manage_raws_checkbox.pack(padx=8, pady=8)
 
         self.raw_directory_container: ctk.CTkFrame = ctk.CTkFrame(
-            self.manage_raws_container
+            self.manage_raws_container, fg_color=COLORS.background.darker
         )
         self.raw_directory_container.pack(padx=8, pady=8)
 
