@@ -817,6 +817,7 @@ class StartScreen(ctk.CTkFrame):
         self.update_idletasks()
 
         self.cacheHandler: cM.ImageItemCacheHandler
+        self.inspect_mode: InspectMode | None = None
 
     def update_system_log_l(self, log: str):
         print(log)
@@ -1020,13 +1021,15 @@ class StartScreen(ctk.CTkFrame):
         self.image_l.pack_forget()
         self.image_highlight_l.pack_forget()
 
-        self.inspect_mode: InspectMode = InspectMode(
+        self.inspect_mode = InspectMode(
             self.app, self.main_page, self.on_exit_inspect_mode
         )
         self.inspect_mode.set_images_to_inspect([abspath_curr_image])
         self.inspect_mode.enter()
 
     def on_exit_inspect_mode(self):
+        self.inspect_mode = None
+        gc.collect()
         self.app.status_ribbon.phase_section.set_phase(Phases.start_screen)
 
         self.image_highlight_l.pack(expand=True, fill=ctk.X)
@@ -1099,6 +1102,7 @@ class InspectMode:
         self.canvas_manager.canvas.pack_forget()
         for image in self.canvas_manager.images.values():
             image.image.close()
+        self.canvas_manager.images.clear()
         gc.collect()
         self._on_exit_action()
 

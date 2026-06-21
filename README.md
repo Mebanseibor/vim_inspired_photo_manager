@@ -68,7 +68,6 @@ _Inspired by_
   - pillow
   - customtkinter
   - xxhash
-  - sqlite3
 
 ### Steps
 
